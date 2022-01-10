@@ -98,7 +98,7 @@ public class SparkBulkInsertHelper<T extends HoodieRecordPayload, R> extends Abs
 
     if (performDedupe) {
       dedupedRecords = (JavaRDD<HoodieRecord<T>>) SparkWriteHelper.newInstance().combineOnCondition(config.shouldCombineBeforeInsert(), inputRecords,
-          parallelism, table);
+          parallelism, table, config);
     }
 
     final JavaRDD<HoodieRecord<T>> repartitionedRecords;

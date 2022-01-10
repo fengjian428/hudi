@@ -99,7 +99,7 @@ public class JavaBulkInsertHelper<T extends HoodieRecordPayload, R> extends Abst
 
     if (performDedupe) {
       dedupedRecords = (List<HoodieRecord<T>>) JavaWriteHelper.newInstance().combineOnCondition(config.shouldCombineBeforeInsert(), inputRecords,
-          parallelism, table);
+          parallelism, table, config);
     }
 
     final List<HoodieRecord<T>> repartitionedRecords;

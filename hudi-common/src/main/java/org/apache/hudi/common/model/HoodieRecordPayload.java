@@ -44,6 +44,11 @@ public interface HoodieRecordPayload<T extends HoodieRecordPayload> extends Seri
   @PublicAPIMethod(maturity = ApiMaturityLevel.DEPRECATED)
   T preCombine(T oldValue);
 
+  @PublicAPIMethod(maturity = ApiMaturityLevel.DEPRECATED)
+  default T preCombine(T oldValue, Schema schema){
+    return preCombine(oldValue);
+  }
+
   /**
    * When more than one HoodieRecord have the same HoodieKey in the incoming batch, this function combines them before attempting to insert/upsert by taking in a property map.
    * Implementation can leverage the property to decide their business logic to do preCombine.

@@ -18,16 +18,13 @@
 
 package org.apache.hudi.common.model;
 
-import org.apache.avro.JsonProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hudi.common.util.Option;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * subclass of OverwriteWithLatestAvroPayload used for delta streamer.
@@ -40,55 +37,63 @@ import java.util.Objects;
  */
 public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
 
-  public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
-    super(record, orderingVal);
-  }
-
-  public PartialUpdateAvroPayload(Option<GenericRecord> record) {
-    super(record); // natural order
-  }
-
-  @Override
-  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-
-    Option<IndexedRecord> recordOption = getInsertValue(schema);
-    if (!recordOption.isPresent()) {
-      return Option.empty();
+    public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
+        super(record, orderingVal);
     }
 
-    GenericRecord insertRecord = (GenericRecord) recordOption.get();
-    GenericRecord currentRecord = (GenericRecord) currentValue;
+    public PartialUpdateAvroPayload(Option<GenericRecord> record) {
+        super(record); // natural order
+    }
 
-    if (isDeleteRecord(insertRecord)) {
-      return Option.empty();
-    } else {
-      List<Schema.Field> fields = schema.getFields();
-      fields.forEach(field -> {
-        Object value = insertRecord.get(field.name());
-        value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-        Object defaultValue = field.defaultVal();
-        if (!overwriteField(value, defaultValue)) {
-////          if(field.schema().getType().equals(Schema.Type.ARRAY)){
-////            List<Object> oldArray = (List<Object>) currentRecord.get(field.name());
-////            List<Object> insertArray = (List<Object>) value;
-////            List<Object> mergeList =new ArrayList<>();
-////            mergeList.addAll(oldArray);
-////            mergeList.addAll(insertArray);
-////            currentRecord.put(field.name(), mergeList);
-////          }
-////          else{
-            currentRecord.put(field.name(), value);
-//          }
+    @Override
+    public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Schema schema) {
+        if (oldValue.recordBytes.length == 0) {
+            // use natural order for delete record
+            return this;
         }
-      });
-      return Option.of(currentRecord);
+        try {
+            GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schema).get();
+            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schema);
+            if (optValue.isPresent()) {
+                return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), this.orderingVal);
+            }
+        } catch (Exception ex) {
+            return this;
+        }
+        return this;
     }
-  }
 
-  /**
-   * Return true if value equals defaultValue otherwise false.
-   */
-  public Boolean overwriteField(Object value, Object defaultValue) {
-     return value == null;
-  }
+    @Override
+    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
+
+        Option<IndexedRecord> recordOption = getInsertValue(schema);
+        if (!recordOption.isPresent()) {
+            return Option.empty();
+        }
+
+        GenericRecord insertRecord = (GenericRecord) recordOption.get();
+        GenericRecord currentRecord = (GenericRecord) currentValue;
+
+        if (isDeleteRecord(insertRecord)) {
+            return Option.empty();
+        } else {
+            List<Schema.Field> fields = schema.getFields();
+            fields.forEach(field -> {
+                Object value = insertRecord.get(field.name());
+                value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
+                Object defaultValue = field.defaultVal();
+                if (!overwriteField(value, defaultValue)) {
+                    currentRecord.put(field.name(), value);
+                }
+            });
+            return Option.of(currentRecord);
+        }
+    }
+
+    /**
+     * Return true if value equals defaultValue otherwise false.
+     */
+    public Boolean overwriteField(Object value, Object defaultValue) {
+        return value == null;
+    }
 }

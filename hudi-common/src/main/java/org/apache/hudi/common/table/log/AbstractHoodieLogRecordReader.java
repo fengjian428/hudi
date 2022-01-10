@@ -86,7 +86,7 @@ public abstract class AbstractHoodieLogRecordReader {
   // Merge strategy to use when combining records from log
   private final String payloadClassFQN;
   // preCombine field
-  private final String preCombineField;
+  protected final String preCombineField;
   // simple key gen fields
   private Option<Pair<String, String>> simpleKeyGenFields = Option.empty();
   // Log File Paths
