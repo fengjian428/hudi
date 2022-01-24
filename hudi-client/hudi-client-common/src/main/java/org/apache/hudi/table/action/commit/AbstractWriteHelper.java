@@ -28,10 +28,31 @@ import org.apache.hudi.table.HoodieTable;
 
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
+import org.apache.avro.Schema;
+import org.apache.avro.SchemaParseException;
+
 import java.time.Duration;
 import java.time.Instant;
 
 public abstract class AbstractWriteHelper<T extends HoodieRecordPayload, I, K, O, R> {
+
+  private Schema schema;
+
+  /**
+   * Get the specified table schema.
+   * @param config
+   * @return
+   */
+  protected Schema getSpecifiedTableSchema(HoodieWriteConfig config) {
+    if (this.schema == null) {
+      try {
+        schema = new Schema.Parser().parse(config.getSchema());
+      } catch (SchemaParseException ex) {
+        return schema;
+      }
+    }
+    return schema;
+  }
 
   public HoodieWriteMetadata<O> write(String instantTime,
                                       I inputRecords,

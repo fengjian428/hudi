@@ -136,7 +136,7 @@ public class TestPartialUpdateAvroPayload {
     assertEquals(record1, payload1.getInsertValue(schema).get());
     assertFalse(payload2.getInsertValue(schema).isPresent());
 
-    assertEquals(payload1.combineAndGetUpdateValue(delRecord1, schema).get(), record2);
+    assertEquals(payload1.combineAndGetUpdateValue(delRecord1, schema).get(), record1);
     assertFalse(payload2.combineAndGetUpdateValue(record1, schema).isPresent());
   }
 

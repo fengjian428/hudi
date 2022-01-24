@@ -101,7 +101,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends Abstract
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1);
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1,getSpecifiedTableSchema(config));
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.

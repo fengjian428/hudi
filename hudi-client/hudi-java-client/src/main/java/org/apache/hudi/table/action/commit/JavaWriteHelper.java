@@ -18,7 +18,6 @@
 
 package org.apache.hudi.table.action.commit;
 
-import org.apache.avro.Schema;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieList;
 import org.apache.hudi.common.engine.HoodieEngineContext;
@@ -69,7 +68,7 @@ public class JavaWriteHelper<T extends HoodieRecordPayload,R> extends AbstractWr
 
     return keyedRecords.values().stream().map(x -> x.stream().map(Pair::getRight).reduce((rec1, rec2) -> {
       @SuppressWarnings("unchecked")
-      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), new Schema.Parser().parse(config.getSchema()));
+      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), getSpecifiedTableSchema(config));
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.
