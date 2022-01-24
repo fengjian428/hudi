@@ -29,8 +29,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests {@link TestPartialUpdateAvroPayload}.
@@ -38,16 +37,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 public class TestPartialUpdateAvroPayload {
   private Schema schema;
 
+  String jsonSchema = "{\n" +
+          "  \"type\": \"record\",\n" +
+          "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n" +
+          "  \"fields\": [\n" +
+          "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n" +
+          "    {\"name\": \"partition\", \"type\": [\"null\", \"string\"]},\n" +
+          "    {\"name\": \"ts\", \"type\": [\"null\", \"long\"]},\n" +
+          "    {\"name\": \"_hoodie_is_deleted\", \"type\": [\"null\", \"boolean\"], \"default\":false},\n" +
+          "    {\"name\": \"city\", \"type\": [\"null\", \"string\"]},\n" +
+          "    {\"name\": \"child\", \"type\": [\"null\", {\"type\": \"array\", \"items\": \"string\"}]}\n" +
+          "  ]\n" +
+          "}";
   @BeforeEach
   public void setUp() throws Exception {
-    schema = Schema.createRecord(Arrays.asList(
-            new Schema.Field("id", Schema.create(Schema.Type.STRING), "", null),
-            new Schema.Field("partition", Schema.create(Schema.Type.STRING), "", ""),
-            new Schema.Field("ts", Schema.create(Schema.Type.LONG), "", null),
-            new Schema.Field("_hoodie_is_deleted", Schema.create(Schema.Type.BOOLEAN), "", false),
-            new Schema.Field("city", Schema.create(Schema.Type.STRING), "", "NY"),
-            new Schema.Field("child", Schema.createArray(Schema.create(Schema.Type.STRING)), "", Collections.emptyList())
-            ));
+    schema = new Schema.Parser().parse(jsonSchema);
   }
 
   @Test
@@ -55,17 +59,17 @@ public class TestPartialUpdateAvroPayload {
     GenericRecord record1 = new GenericData.Record(schema);
     record1.put("id", "1");
     record1.put("partition", "partition1");
-    record1.put("ts", 0L);
+    record1.put("ts", null);
     record1.put("_hoodie_is_deleted", false);
     record1.put("city", "NY0");
     record1.put("child", Arrays.asList("A"));
 
     GenericRecord record2 = new GenericData.Record(schema);
     record2.put("id", "1");
-    record2.put("partition", "");
-    record2.put("ts", 1L);
+    record2.put("partition", "partition1");
+    record2.put("ts", 0L);
     record2.put("_hoodie_is_deleted", false);
-    record2.put("city", "NY");
+    record2.put("city", null);
     record2.put("child", Arrays.asList("B"));
 
     GenericRecord record3 = new GenericData.Record(schema);
@@ -74,21 +78,21 @@ public class TestPartialUpdateAvroPayload {
     record3.put("ts", 0L);
     record3.put("_hoodie_is_deleted", false);
     record3.put("city", "NY0");
-    record3.put("child", Arrays.asList("B","A"));
+    record3.put("child", Arrays.asList("A"));
 
     GenericRecord record4 = new GenericData.Record(schema);
     record4.put("id", "1");
     record4.put("partition", "partition1");
-    record4.put("ts", 1L);
+    record4.put("ts", 0L);
     record4.put("_hoodie_is_deleted", false);
     record4.put("city", "NY0");
-    record4.put("child", Arrays.asList("A","B"));
+    record4.put("child", Arrays.asList("B"));
 
 
     PartialUpdateAvroPayload payload1 = new PartialUpdateAvroPayload(record1, 1);
     PartialUpdateAvroPayload payload2 = new PartialUpdateAvroPayload(record2, 2);
-    assertEquals(payload1.preCombine(payload2), payload2);
-    assertEquals(payload2.preCombine(payload1), payload2);
+    assertArrayEquals(payload1.preCombine(payload2, schema).recordBytes, new PartialUpdateAvroPayload(record3,1).recordBytes);
+    assertArrayEquals(payload2.preCombine(payload1, schema).recordBytes, new PartialUpdateAvroPayload(record4,2).recordBytes);
 
     assertEquals(record1, payload1.getInsertValue(schema).get());
     assertEquals(record2, payload2.getInsertValue(schema).get());
@@ -123,8 +127,8 @@ public class TestPartialUpdateAvroPayload {
     record2.put("city", "NY0");
     record2.put("child", Collections.emptyList());
 
-    OverwriteNonDefaultsWithLatestAvroPayload payload1 = new OverwriteNonDefaultsWithLatestAvroPayload(record1, 1);
-    OverwriteNonDefaultsWithLatestAvroPayload payload2 = new OverwriteNonDefaultsWithLatestAvroPayload(delRecord1, 2);
+    PartialUpdateAvroPayload payload1 = new PartialUpdateAvroPayload(record1, 1);
+    PartialUpdateAvroPayload payload2 = new PartialUpdateAvroPayload(delRecord1, 2);
 
     assertEquals(payload1.preCombine(payload2), payload2);
     assertEquals(payload2.preCombine(payload1), payload2);
@@ -135,7 +139,7 @@ public class TestPartialUpdateAvroPayload {
     assertEquals(payload1.combineAndGetUpdateValue(delRecord1, schema).get(), record2);
     assertFalse(payload2.combineAndGetUpdateValue(record1, schema).isPresent());
   }
-  
+
   @Test
   public void testNullColumn() throws IOException {
     Schema avroSchema = Schema.createRecord(Arrays.asList(
@@ -143,7 +147,7 @@ public class TestPartialUpdateAvroPayload {
             new Schema.Field("name", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
             new Schema.Field("age", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
             new Schema.Field("job", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE)
-            ));
+    ));
     GenericRecord record1 = new GenericData.Record(avroSchema);
     record1.put("id", "1");
     record1.put("name", "aa");

@@ -450,11 +450,14 @@ public class TestHoodieClientOnCopyOnWriteStorage extends HoodieClientTestBase {
 
     JavaRDD<HoodieRecord<RawTripTestPayload>> records =
         jsc.parallelize(Arrays.asList(recordOne, recordTwo, recordThree), 1);
+    HoodieWriteConfig.Builder configBuilder = getConfigBuilder(HoodieFailedWritesCleaningPolicy.LAZY)
+            .combineInput(true, true);
+    addConfigsForPopulateMetaFields(configBuilder, populateMetaFields);
 
     // Global dedup should be done based on recordKey only
     HoodieIndex index = mock(HoodieIndex.class);
     when(index.isGlobal()).thenReturn(true);
-    List<HoodieRecord<RawTripTestPayload>> dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, getConfig()).collect();
+    List<HoodieRecord<RawTripTestPayload>> dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collect();
     assertEquals(1, dedupedRecs.size());
     assertEquals(dedupedRecs.get(0).getPartitionPath(), recordThree.getPartitionPath());
     assertNodupesWithinPartition(dedupedRecs);
@@ -462,15 +465,12 @@ public class TestHoodieClientOnCopyOnWriteStorage extends HoodieClientTestBase {
     // non-Global dedup should be done based on both recordKey and partitionPath
     index = mock(HoodieIndex.class);
     when(index.isGlobal()).thenReturn(false);
-    dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, getConfig()).collect();
+    dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collect();
     assertEquals(2, dedupedRecs.size());
     assertNodupesWithinPartition(dedupedRecs);
 
     // Perform write-action and check
     JavaRDD<HoodieRecord> recordList = jsc.parallelize(Arrays.asList(recordOne, recordTwo, recordThree), 1);
-    HoodieWriteConfig.Builder configBuilder = getConfigBuilder(HoodieFailedWritesCleaningPolicy.LAZY)
-        .combineInput(true, true);
-    addConfigsForPopulateMetaFields(configBuilder, populateMetaFields);
 
     try (SparkRDDWriteClient client = getHoodieWriteClient(configBuilder.build());) {
       client.startCommitWithTime(newCommitTime);
