@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.action.commit;
 
+import org.apache.avro.Schema;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.HoodieKey;
@@ -68,7 +69,7 @@ public class SparkWriteHelper<T extends HoodieRecordPayload,R> extends AbstractW
       return new Tuple2<>(key, record);
     }).reduceByKey((rec1, rec2) -> {
       @SuppressWarnings("unchecked")
-      T reducedData = (T) rec2.getData().preCombine(rec1.getData(), getSpecifiedTableSchema(config));
+      T reducedData = (T) rec2.getData().preCombine(rec1.getData(), new Schema.Parser().parse(config.getSchema()));
       HoodieKey reducedKey = rec1.getData().equals(reducedData) ? rec1.getKey() : rec2.getKey();
 
       return new HoodieRecord<T>(reducedKey, reducedData);
