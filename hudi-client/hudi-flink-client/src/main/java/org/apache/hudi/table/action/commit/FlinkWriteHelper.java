@@ -98,11 +98,12 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends Abstract
       return Pair.of(key, record);
     }).collect(Collectors.groupingBy(Pair::getLeft));
 
+    Schema schema = new Schema.Parser().parse(config.getSchema());
     return keyedRecords.values().stream().map(x -> x.stream().map(Pair::getRight).reduce((rec1, rec2) -> {
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1,new Schema.Parser().parse(config.getSchema()));
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, schema);
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.
