@@ -67,10 +67,13 @@ public class JavaWriteHelper<T extends HoodieRecordPayload,R> extends AbstractWr
       return Pair.of(key, record);
     }).collect(Collectors.groupingBy(Pair::getLeft));
 
-    Schema schema = new Schema.Parser().parse(config.getSchema());
+    final Schema[] schema = {null};
     return keyedRecords.values().stream().map(x -> x.stream().map(Pair::getRight).reduce((rec1, rec2) -> {
+      if (schema[0] == null) {
+        schema[0] = new Schema.Parser().parse(config.getSchema());
+      }
       @SuppressWarnings("unchecked")
-      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), schema);
+      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), schema[0]);
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.

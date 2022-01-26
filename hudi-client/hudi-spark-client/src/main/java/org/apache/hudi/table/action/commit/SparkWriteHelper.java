@@ -62,15 +62,18 @@ public class SparkWriteHelper<T extends HoodieRecordPayload,R> extends AbstractW
   public JavaRDD<HoodieRecord<T>> deduplicateRecords(
           JavaRDD<HoodieRecord<T>> records, HoodieIndex<T, ?, ?, ?> index, int parallelism, HoodieWriteConfig config) {
     boolean isIndexingGlobal = index.isGlobal();
-    Schema schema = new Schema.Parser().parse(config.getSchema());
+    final Schema[] schema = {null};
     return records.mapToPair(record -> {
       HoodieKey hoodieKey = record.getKey();
       // If index used is global, then records are expected to differ in their partitionPath
       Object key = isIndexingGlobal ? hoodieKey.getRecordKey() : hoodieKey;
       return new Tuple2<>(key, record);
     }).reduceByKey((rec1, rec2) -> {
+      if (schema[0] == null) {
+        schema[0] = new Schema.Parser().parse(config.getSchema());
+      }
       @SuppressWarnings("unchecked")
-      T reducedData = (T) rec2.getData().preCombine(rec1.getData(), schema);
+      T reducedData = (T) rec2.getData().preCombine(rec1.getData(), schema[0]);
       HoodieKey reducedKey = rec1.getData().equals(reducedData) ? rec1.getKey() : rec2.getKey();
 
       return new HoodieRecord<T>(reducedKey, reducedData);
