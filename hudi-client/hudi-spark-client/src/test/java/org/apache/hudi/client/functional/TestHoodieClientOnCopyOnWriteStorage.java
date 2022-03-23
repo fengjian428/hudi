@@ -457,8 +457,6 @@ public class TestHoodieClientOnCopyOnWriteStorage extends HoodieClientTestBase {
 
     HoodieData<HoodieRecord<RawTripTestPayload>> records = HoodieJavaRDD.of(
         jsc.parallelize(Arrays.asList(recordOne, recordTwo, recordThree), 1));
-    JavaRDD<HoodieRecord<RawTripTestPayload>> records =
-        jsc.parallelize(Arrays.asList(recordOne, recordTwo, recordThree), 1);
     HoodieWriteConfig.Builder configBuilder = getConfigBuilder(HoodieFailedWritesCleaningPolicy.LAZY)
             .combineInput(true, true);
     addConfigsForPopulateMetaFields(configBuilder, populateMetaFields);
@@ -466,8 +464,7 @@ public class TestHoodieClientOnCopyOnWriteStorage extends HoodieClientTestBase {
     // Global dedup should be done based on recordKey only
     HoodieIndex index = mock(HoodieIndex.class);
     when(index.isGlobal()).thenReturn(true);
-    List<HoodieRecord<RawTripTestPayload>> dedupedRecs = HoodieWriteHelper.newInstance().deduplicateRecords(records, index, 1).collectAsList();
-    List<HoodieRecord<RawTripTestPayload>> dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collect();
+    List<HoodieRecord<RawTripTestPayload>> dedupedRecs = HoodieWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collectAsList();
     assertEquals(1, dedupedRecs.size());
     assertEquals(dedupedRecs.get(0).getPartitionPath(), recordThree.getPartitionPath());
     assertNodupesWithinPartition(dedupedRecs);
@@ -476,7 +473,6 @@ public class TestHoodieClientOnCopyOnWriteStorage extends HoodieClientTestBase {
     index = mock(HoodieIndex.class);
     when(index.isGlobal()).thenReturn(false);
     dedupedRecs = HoodieWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collectAsList();
-    dedupedRecs = SparkWriteHelper.newInstance().deduplicateRecords(records, index, 1, configBuilder.build()).collect();
     assertEquals(2, dedupedRecs.size());
     assertNodupesWithinPartition(dedupedRecs);
 
