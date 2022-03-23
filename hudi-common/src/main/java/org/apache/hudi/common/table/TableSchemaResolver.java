@@ -21,14 +21,15 @@ package org.apache.hudi.common.table;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.SchemaCompatibility;
-
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-
+import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieLogFile;
+import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.log.HoodieLogFormat.Reader;
 import org.apache.hudi.common.table.log.block.HoodieDataBlock;
@@ -42,10 +43,11 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.InvalidTableException;
+import org.apache.hudi.io.storage.HoodieHFileReader;
 
+import org.apache.hudi.io.storage.HoodieOrcReader;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-
 import org.apache.parquet.avro.AvroSchemaConverter;
 import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
@@ -56,20 +58,18 @@ import java.io.IOException;
 
 /**
  * Helper class to read schema from data files and log files and to convert it between different formats.
+ *
+ * TODO(HUDI-3626) cleanup
  */
 public class TableSchemaResolver {
 
   private static final Logger LOG = LogManager.getLogger(TableSchemaResolver.class);
   private final HoodieTableMetaClient metaClient;
-  private final boolean withOperationField;
+  private final boolean hasOperationField;
 
   public TableSchemaResolver(HoodieTableMetaClient metaClient) {
-    this(metaClient, false);
-  }
-
-  public TableSchemaResolver(HoodieTableMetaClient metaClient, boolean withOperationField) {
     this.metaClient = metaClient;
-    this.withOperationField = withOperationField;
+    this.hasOperationField = hasOperationField();
   }
 
   /**
@@ -85,29 +85,26 @@ public class TableSchemaResolver {
     try {
       switch (metaClient.getTableType()) {
         case COPY_ON_WRITE:
-          // For COW table, the file has data written must be in parquet format currently.
+          // For COW table, the file has data written must be in parquet or orc format currently.
           if (instantAndCommitMetadata.isPresent()) {
             HoodieCommitMetadata commitMetadata = instantAndCommitMetadata.get().getRight();
             String filePath = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().stream().findAny().get();
-            return readSchemaFromBaseFile(new Path(filePath));
+            return readSchemaFromBaseFile(filePath);
           } else {
             throw new IllegalArgumentException("Could not find any data file written for commit, "
                 + "so could not get schema for table " + metaClient.getBasePath());
           }
         case MERGE_ON_READ:
-          // For MOR table, the file has data written may be a parquet file or .log file.
+          // For MOR table, the file has data written may be a parquet file, .log file, orc file or hfile.
           // Determine the file format based on the file name, and then extract schema from it.
           if (instantAndCommitMetadata.isPresent()) {
             HoodieCommitMetadata commitMetadata = instantAndCommitMetadata.get().getRight();
             String filePath = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().stream().findAny().get();
-            if (filePath.contains(HoodieLogFile.DELTA_EXTENSION)) {
+            if (filePath.contains(HoodieFileFormat.HOODIE_LOG.getFileExtension())) {
               // this is a log file
               return readSchemaFromLogFile(new Path(filePath));
-            } else if (filePath.contains(HoodieFileFormat.PARQUET.getFileExtension())) {
-              // this is a parquet file
-              return readSchemaFromBaseFile(new Path(filePath));
             } else {
-              throw new IllegalArgumentException("Unknown file format :" + filePath);
+              return readSchemaFromBaseFile(filePath);
             }
           } else {
             throw new IllegalArgumentException("Could not find any data file written for commit, "
@@ -122,7 +119,22 @@ public class TableSchemaResolver {
     }
   }
 
-  public Schema getTableAvroSchemaFromDataFile() throws Exception {
+  private MessageType readSchemaFromBaseFile(String filePath) throws IOException {
+    if (filePath.contains(HoodieFileFormat.PARQUET.getFileExtension())) {
+      // this is a parquet file
+      return readSchemaFromParquetBaseFile(new Path(filePath));
+    } else if (filePath.contains(HoodieFileFormat.HFILE.getFileExtension())) {
+      // this is a HFile
+      return readSchemaFromHFileBaseFile(new Path(filePath));
+    } else if (filePath.contains(HoodieFileFormat.ORC.getFileExtension())) {
+      // this is a ORC file
+      return readSchemaFromORCBaseFile(new Path(filePath));
+    } else {
+      throw new IllegalArgumentException("Unknown base file format :" + filePath);
+    }
+  }
+
+  public Schema getTableAvroSchemaFromDataFile() {
     return convertParquetSchemaToAvro(getTableParquetSchemaFromDataFile());
   }
 
@@ -133,7 +145,7 @@ public class TableSchemaResolver {
    * @throws Exception
    */
   public Schema getTableAvroSchema() throws Exception {
-    return getTableAvroSchema(true);
+    return getTableAvroSchema(metaClient.getTableConfig().populateMetaFields());
   }
 
   /**
@@ -151,7 +163,7 @@ public class TableSchemaResolver {
     Option<Schema> schemaFromTableConfig = metaClient.getTableConfig().getTableCreateSchema();
     if (schemaFromTableConfig.isPresent()) {
       if (includeMetadataFields) {
-        return HoodieAvroUtils.addMetadataFields(schemaFromTableConfig.get(), withOperationField);
+        return HoodieAvroUtils.addMetadataFields(schemaFromTableConfig.get(), hasOperationField);
       } else {
         return schemaFromTableConfig.get();
       }
@@ -176,7 +188,7 @@ public class TableSchemaResolver {
     }
     Option<Schema> schemaFromTableConfig = metaClient.getTableConfig().getTableCreateSchema();
     if (schemaFromTableConfig.isPresent()) {
-      Schema schema = HoodieAvroUtils.addMetadataFields(schemaFromTableConfig.get(), withOperationField);
+      Schema schema = HoodieAvroUtils.addMetadataFields(schemaFromTableConfig.get(), hasOperationField);
       return convertAvroSchemaToParquet(schema);
     }
     return getTableParquetSchemaFromDataFile();
@@ -187,7 +199,10 @@ public class TableSchemaResolver {
    *
    * @return  Avro user data schema
    * @throws Exception
+   *
+   * @deprecated use {@link #getTableAvroSchema(boolean)} instead
    */
+  @Deprecated
   public Schema getTableAvroSchemaWithoutMetadataFields() throws Exception {
     return getTableAvroSchema(false);
   }
@@ -198,7 +213,9 @@ public class TableSchemaResolver {
    * @param instant will get the instant data schema
    * @return  Avro user data schema
    * @throws Exception
+   * @deprecated use {@link #getTableSchemaFromCommitMetadata} instead
    */
+  @Deprecated
   public Schema getTableAvroSchemaWithoutMetadataFields(HoodieInstant instant) throws Exception {
     Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata(instant, false);
     if (schemaFromCommitMetadata.isPresent()) {
@@ -212,14 +229,21 @@ public class TableSchemaResolver {
   }
 
   /**
-   * Gets the schema for a hoodie table in Avro format from the HoodieCommitMetadata of the last commit.
+   * Gets the schema for a hoodie table in Avro format from the HoodieCommitMetadata of the last commit with valid schema.
    *
    * @return Avro schema for this table
    */
   private Option<Schema> getTableSchemaFromCommitMetadata(boolean includeMetadataFields) {
-    HoodieTimeline timeline = metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants();
-    if (timeline.lastInstant().isPresent()) {
-      return getTableSchemaFromCommitMetadata(timeline.lastInstant().get(), includeMetadataFields);
+    Option<Pair<HoodieInstant, HoodieCommitMetadata>> instantAndCommitMetadata =
+        metaClient.getActiveTimeline().getLastCommitMetadataWithValidSchema();
+    if (instantAndCommitMetadata.isPresent()) {
+      HoodieCommitMetadata commitMetadata = instantAndCommitMetadata.get().getRight();
+      String schemaStr = commitMetadata.getMetadata(HoodieCommitMetadata.SCHEMA_KEY);
+      Schema schema = new Schema.Parser().parse(schemaStr);
+      if (includeMetadataFields) {
+        schema = HoodieAvroUtils.addMetadataFields(schema, hasOperationField);
+      }
+      return Option.of(schema);
     } else {
       return Option.empty();
     }
@@ -244,7 +268,7 @@ public class TableSchemaResolver {
 
       Schema schema = new Schema.Parser().parse(existingSchemaStr);
       if (includeMetadataFields) {
-        schema = HoodieAvroUtils.addMetadataFields(schema, withOperationField);
+        schema = HoodieAvroUtils.addMetadataFields(schema, hasOperationField);
       }
       return Option.of(schema);
     } catch (Exception e) {
@@ -416,17 +440,39 @@ public class TableSchemaResolver {
   /**
    * Read the parquet schema from a parquet File.
    */
-  public MessageType readSchemaFromBaseFile(Path parquetFilePath) throws IOException {
+  public MessageType readSchemaFromParquetBaseFile(Path parquetFilePath) throws IOException {
     LOG.info("Reading schema from " + parquetFilePath);
 
     FileSystem fs = metaClient.getRawFs();
-    if (!fs.exists(parquetFilePath)) {
-      throw new IllegalArgumentException(
-          "Failed to read schema from data file " + parquetFilePath + ". File does not exist.");
-    }
     ParquetMetadata fileFooter =
         ParquetFileReader.readFooter(fs.getConf(), parquetFilePath, ParquetMetadataConverter.NO_FILTER);
     return fileFooter.getFileMetaData().getSchema();
+  }
+
+  /**
+   * Read the parquet schema from a HFile.
+   */
+  public MessageType readSchemaFromHFileBaseFile(Path hFilePath) throws IOException {
+    LOG.info("Reading schema from " + hFilePath);
+
+    FileSystem fs = metaClient.getRawFs();
+    CacheConfig cacheConfig = new CacheConfig(fs.getConf());
+    HoodieHFileReader<IndexedRecord> hFileReader = new HoodieHFileReader<>(fs.getConf(), hFilePath, cacheConfig);
+
+    return convertAvroSchemaToParquet(hFileReader.getSchema());
+  }
+
+
+  /**
+   * Read the parquet schema from a ORC file.
+   */
+  public MessageType readSchemaFromORCBaseFile(Path orcFilePath) throws IOException {
+    LOG.info("Reading schema from " + orcFilePath);
+
+    FileSystem fs = metaClient.getRawFs();
+    HoodieOrcReader<IndexedRecord> orcReader = new HoodieOrcReader<>(fs.getConf(), orcFilePath);
+
+    return convertAvroSchemaToParquet(orcReader.getSchema());
   }
 
   /**
@@ -445,7 +491,7 @@ public class TableSchemaResolver {
     String filePath = compactionMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().stream().findAny()
         .orElseThrow(() -> new IllegalArgumentException("Could not find any data file written for compaction "
             + lastCompactionCommit + ", could not get schema for table " + metaClient.getBasePath()));
-    return readSchemaFromBaseFile(new Path(filePath));
+    return readSchemaFromBaseFile(filePath);
   }
 
   /**
@@ -463,18 +509,29 @@ public class TableSchemaResolver {
    * @return
    */
   public static MessageType readSchemaFromLogFile(FileSystem fs, Path path) throws IOException {
-    Reader reader = HoodieLogFormat.newReader(fs, new HoodieLogFile(path), null);
-    HoodieDataBlock lastBlock = null;
-    while (reader.hasNext()) {
-      HoodieLogBlock block = reader.next();
-      if (block instanceof HoodieDataBlock) {
-        lastBlock = (HoodieDataBlock) block;
+    try (Reader reader = HoodieLogFormat.newReader(fs, new HoodieLogFile(path), null)) {
+      HoodieDataBlock lastBlock = null;
+      while (reader.hasNext()) {
+        HoodieLogBlock block = reader.next();
+        if (block instanceof HoodieDataBlock) {
+          lastBlock = (HoodieDataBlock) block;
+        }
       }
+      return lastBlock != null ? new AvroSchemaConverter().convert(lastBlock.getSchema()) : null;
     }
-    reader.close();
-    if (lastBlock != null) {
-      return new AvroSchemaConverter().convert(lastBlock.getSchema());
+  }
+
+  public boolean isHasOperationField() {
+    return hasOperationField;
+  }
+
+  private boolean hasOperationField() {
+    try {
+      Schema tableAvroSchema = getTableAvroSchemaFromDataFile();
+      return tableAvroSchema.getField(HoodieRecord.OPERATION_METADATA_FIELD) != null;
+    } catch (Exception e) {
+      LOG.info(String.format("Failed to read operation field from avro schema (%s)", e.getMessage()));
+      return false;
     }
-    return null;
   }
 }

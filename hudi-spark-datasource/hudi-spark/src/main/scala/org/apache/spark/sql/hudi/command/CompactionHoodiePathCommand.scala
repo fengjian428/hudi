@@ -17,18 +17,15 @@
 
 package org.apache.spark.sql.hudi.command
 
-import org.apache.hudi.client.WriteStatus
-import org.apache.hudi.common.model.HoodieTableType
+import org.apache.hudi.HoodieCLIUtils
+import org.apache.hudi.common.model.{HoodieCommitMetadata, HoodieTableType}
+import org.apache.hudi.common.table.HoodieTableMetaClient
 import org.apache.hudi.common.table.timeline.{HoodieActiveTimeline, HoodieTimeline}
-import org.apache.hudi.common.table.{HoodieTableMetaClient, TableSchemaResolver}
 import org.apache.hudi.common.util.{HoodieTimer, Option => HOption}
 import org.apache.hudi.exception.HoodieException
-import org.apache.hudi.{DataSourceUtils, DataSourceWriteOptions, HoodieWriterUtils}
-import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference}
 import org.apache.spark.sql.catalyst.plans.logical.CompactionOperation
 import org.apache.spark.sql.catalyst.plans.logical.CompactionOperation.{CompactionOperation, RUN, SCHEDULE}
-import org.apache.spark.sql.hudi.HoodieSqlCommonUtils
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.{Row, SparkSession}
 
@@ -45,19 +42,7 @@ case class CompactionHoodiePathCommand(path: String,
 
     assert(metaClient.getTableType == HoodieTableType.MERGE_ON_READ,
       s"Must compaction on a Merge On Read table.")
-    val schemaUtil = new TableSchemaResolver(metaClient)
-    val schemaStr = schemaUtil.getTableAvroSchemaWithoutMetadataFields.toString
-
-    val parameters = HoodieWriterUtils.parametersWithWriteDefaults(
-        HoodieSqlCommonUtils.withSparkConf(sparkSession, Map.empty)(
-          Map(
-            DataSourceWriteOptions.TABLE_TYPE.key() -> HoodieTableType.MERGE_ON_READ.name()
-          )
-        )
-      )
-    val jsc = new JavaSparkContext(sparkSession.sparkContext)
-    val client = DataSourceUtils.createHoodieClient(jsc, schemaStr, path,
-      metaClient.getTableConfig.getTableName, parameters)
+    val client = HoodieCLIUtils.createHoodieClientFromPath(sparkSession, path, Map.empty)
 
     operation match {
       case SCHEDULE =>
@@ -65,7 +50,7 @@ case class CompactionHoodiePathCommand(path: String,
         if (client.scheduleCompactionAtInstant(instantTime, HOption.empty[java.util.Map[String, String]])) {
           Seq(Row(instantTime))
         } else {
-          Seq(Row(null))
+          Seq.empty[Row]
         }
       case RUN =>
         // Do compaction
@@ -79,8 +64,12 @@ case class CompactionHoodiePathCommand(path: String,
              pendingCompactionInstants
            } else { // If there are no pending compaction, schedule to generate one.
              // CompactionHoodiePathCommand will return instanceTime for SCHEDULE.
-             Seq(CompactionHoodiePathCommand(path, CompactionOperation.SCHEDULE)
-               .run(sparkSession).take(1).get(0).getString(0)).filter(_ != null)
+             val scheduleSeq = CompactionHoodiePathCommand(path, CompactionOperation.SCHEDULE).run(sparkSession)
+             if (scheduleSeq.isEmpty) {
+               Seq.empty
+             } else {
+               Seq(scheduleSeq.take(1).get(0).getString(0)).filter(_ != null)
+             }
            }
         } else {
           // Check if the compaction timestamp has exists in the pending compaction
@@ -100,8 +89,8 @@ case class CompactionHoodiePathCommand(path: String,
           timer.startTimer()
           willCompactionInstants.foreach {compactionInstant =>
             val writeResponse = client.compact(compactionInstant)
-            handlerResponse(writeResponse)
-            client.commitCompaction(compactionInstant, writeResponse, HOption.empty())
+            handleResponse(writeResponse.getCommitMetadata.get())
+            client.commitCompaction(compactionInstant, writeResponse.getCommitMetadata.get(), HOption.empty())
           }
           logInfo(s"Finish Run compaction at instants: [${willCompactionInstants.mkString(",")}]," +
             s" spend: ${timer.endTimer()}ms")
@@ -111,17 +100,13 @@ case class CompactionHoodiePathCommand(path: String,
     }
   }
 
-  private def handlerResponse(writeResponse: JavaRDD[WriteStatus]): Unit = {
+  private def handleResponse(metadata: HoodieCommitMetadata): Unit = {
+
     // Handle error
-    val error = writeResponse.rdd.filter(f => f.hasErrors).take(1).headOption
-    if (error.isDefined) {
-      if (error.get.hasGlobalError) {
-        throw error.get.getGlobalError
-      } else if (!error.get.getErrors.isEmpty) {
-        val key = error.get.getErrors.asScala.head._1
-        val exception = error.get.getErrors.asScala.head._2
-        throw new HoodieException(s"Error in write record: $key", exception)
-      }
+    val writeStats = metadata.getPartitionToWriteStats.entrySet().flatMap(e => e.getValue).toList
+    val errorsCount = writeStats.map(state => state.getTotalWriteErrors).sum
+    if (errorsCount > 0) {
+      throw new HoodieException(s" Found $errorsCount when writing record")
     }
   }
 

@@ -59,7 +59,6 @@ import org.apache.hudi.metadata.FileSystemBackedTableMetadata;
 import org.apache.hudi.metadata.HoodieBackedTableMetadataWriter;
 import org.apache.hudi.metadata.HoodieTableMetadata;
 import org.apache.hudi.metadata.HoodieTableMetadataWriter;
-import org.apache.hudi.metadata.MetadataPartitionType;
 import org.apache.hudi.metadata.SparkHoodieBackedTableMetadataWriter;
 import org.apache.hudi.table.HoodieSparkTable;
 import org.apache.hudi.table.HoodieTable;
@@ -103,6 +102,7 @@ import scala.Tuple2;
 import static org.apache.hudi.common.util.CleanerUtils.convertCleanMetadata;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertLinesMatch;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -618,21 +618,7 @@ public abstract class HoodieClientTestHarness extends HoodieCommonTestHarness im
     Collections.sort(fsFileNames);
     Collections.sort(metadataFilenames);
 
-    if ((fsFileNames.size() != metadataFilenames.size()) || (!fsFileNames.equals(metadataFilenames))) {
-      LOG.info("*** File system listing = " + Arrays.toString(fsFileNames.toArray()));
-      LOG.info("*** Metadata listing = " + Arrays.toString(metadataFilenames.toArray()));
-
-      for (String fileName : fsFileNames) {
-        if (!metadataFilenames.contains(fileName)) {
-          LOG.error(partition + "FsFilename " + fileName + " not found in Meta data");
-        }
-      }
-      for (String fileName : metadataFilenames) {
-        if (!fsFileNames.contains(fileName)) {
-          LOG.error(partition + "Metadata file " + fileName + " not found in original FS");
-        }
-      }
-    }
+    assertLinesMatch(fsFileNames, metadataFilenames);
     assertEquals(fsStatuses.length, partitionToFilesMap.get(partitionPath.toString()).length);
 
     // Block sizes should be valid
@@ -680,7 +666,7 @@ public abstract class HoodieClientTestHarness extends HoodieCommonTestHarness im
     // in the .hoodie folder.
     List<String> metadataTablePartitions = FSUtils.getAllPartitionPaths(engineContext, HoodieTableMetadata.getMetadataTableBasePath(basePath),
         false, false);
-    Assertions.assertEquals(MetadataPartitionType.values().length, metadataTablePartitions.size());
+    Assertions.assertEquals(metadataWriter.getEnabledPartitionTypes().size(), metadataTablePartitions.size());
 
     // Metadata table should automatically compact and clean
     // versions are +1 as autoClean / compaction happens end of commits

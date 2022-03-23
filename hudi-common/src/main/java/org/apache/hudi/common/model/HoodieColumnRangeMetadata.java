@@ -18,28 +18,49 @@
 
 package org.apache.hudi.common.model;
 
-import org.apache.parquet.schema.PrimitiveStringifier;
-
+import java.io.Serializable;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Objects;
+import java.util.function.BiFunction;
 
 /**
  * Hoodie Range metadata.
  */
-public class HoodieColumnRangeMetadata<T> {
+public class HoodieColumnRangeMetadata<T> implements Serializable {
   private final String filePath;
   private final String columnName;
   private final T minValue;
   private final T maxValue;
-  private final long numNulls;
-  private final PrimitiveStringifier stringifier;
+  private final long nullCount;
+  private final long valueCount;
+  private final long totalSize;
+  private final long totalUncompressedSize;
 
-  public HoodieColumnRangeMetadata(final String filePath, final String columnName, final T minValue, final T maxValue, final long numNulls, final PrimitiveStringifier stringifier) {
+  public static final BiFunction<HoodieColumnRangeMetadata<Comparable>, HoodieColumnRangeMetadata<Comparable>, HoodieColumnRangeMetadata<Comparable>> COLUMN_RANGE_MERGE_FUNCTION =
+      (oldColumnRange, newColumnRange) -> new HoodieColumnRangeMetadata<>(
+          newColumnRange.getFilePath(),
+          newColumnRange.getColumnName(),
+          (Comparable) Arrays.asList(oldColumnRange.getMinValue(), newColumnRange.getMinValue())
+              .stream().filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null),
+          (Comparable) Arrays.asList(oldColumnRange.getMinValue(), newColumnRange.getMinValue())
+              .stream().filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null),
+          oldColumnRange.getNullCount() + newColumnRange.getNullCount(),
+          oldColumnRange.getValueCount() + newColumnRange.getValueCount(),
+          oldColumnRange.getTotalSize() + newColumnRange.getTotalSize(),
+          oldColumnRange.getTotalUncompressedSize() + newColumnRange.getTotalUncompressedSize()
+      );
+
+  public HoodieColumnRangeMetadata(final String filePath, final String columnName, final T minValue, final T maxValue,
+                                   final long nullCount, long valueCount, long totalSize, long totalUncompressedSize) {
     this.filePath = filePath;
     this.columnName = columnName;
     this.minValue = minValue;
     this.maxValue = maxValue;
-    this.numNulls = numNulls;
-    this.stringifier = stringifier;
+    this.nullCount = nullCount;
+    this.valueCount = valueCount;
+    this.totalSize = totalSize;
+    this.totalUncompressedSize = totalUncompressedSize;
   }
 
   public String getFilePath() {
@@ -58,12 +79,20 @@ public class HoodieColumnRangeMetadata<T> {
     return this.maxValue;
   }
 
-  public PrimitiveStringifier getStringifier() {
-    return stringifier;
+  public long getNullCount() {
+    return nullCount;
   }
 
-  public long getNumNulls() {
-    return numNulls;
+  public long getValueCount() {
+    return valueCount;
+  }
+
+  public long getTotalSize() {
+    return totalSize;
+  }
+
+  public long getTotalUncompressedSize() {
+    return totalUncompressedSize;
   }
 
   @Override
@@ -79,21 +108,42 @@ public class HoodieColumnRangeMetadata<T> {
         && Objects.equals(getColumnName(), that.getColumnName())
         && Objects.equals(getMinValue(), that.getMinValue())
         && Objects.equals(getMaxValue(), that.getMaxValue())
-        && Objects.equals(getNumNulls(), that.getNumNulls());
+        && Objects.equals(getNullCount(), that.getNullCount())
+        && Objects.equals(getValueCount(), that.getValueCount())
+        && Objects.equals(getTotalSize(), that.getTotalSize())
+        && Objects.equals(getTotalUncompressedSize(), that.getTotalUncompressedSize());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(getColumnName(), getMinValue(), getMaxValue(), getNumNulls());
+    return Objects.hash(getColumnName(), getMinValue(), getMaxValue(), getNullCount());
   }
 
   @Override
   public String toString() {
     return "HoodieColumnRangeMetadata{"
         + "filePath ='" + filePath + '\''
-        + "columnName='" + columnName + '\''
+        + ", columnName='" + columnName + '\''
         + ", minValue=" + minValue
         + ", maxValue=" + maxValue
-        + ", numNulls=" + numNulls + '}';
+        + ", nullCount=" + nullCount
+        + ", valueCount=" + valueCount
+        + ", totalSize=" + totalSize
+        + ", totalUncompressedSize=" + totalUncompressedSize
+        + '}';
+  }
+
+  /**
+   * Statistics that is collected in {@link org.apache.hudi.metadata.MetadataPartitionType#COLUMN_STATS} index.
+   */
+  public static final class Stats {
+    public static final String VALUE_COUNT = "value_count";
+    public static final String NULL_COUNT = "null_count";
+    public static final String MIN = "min";
+    public static final String MAX = "max";
+    public static final String TOTAL_SIZE = "total_size";
+    public static final String TOTAL_UNCOMPRESSED_SIZE = "total_uncompressed_size";
+
+    private Stats() {  }
   }
 }

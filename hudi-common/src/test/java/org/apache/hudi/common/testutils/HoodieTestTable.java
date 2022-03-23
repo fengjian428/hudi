@@ -141,8 +141,8 @@ public class HoodieTestTable {
     return new HoodieTestTable(metaClient.getBasePath(), metaClient.getRawFs(), metaClient);
   }
 
-  public static String makeNewCommitTime(int sequence) {
-    return String.format("%09d", sequence);
+  public static String makeNewCommitTime(int sequence, String instantFormat) {
+    return String.format(instantFormat, sequence);
   }
 
   public static String makeNewCommitTime() {
@@ -151,14 +151,6 @@ public class HoodieTestTable {
 
   public static String makeNewCommitTime(Instant dateTime) {
     return HoodieActiveTimeline.formatDate(Date.from(dateTime));
-  }
-
-  public static List<String> makeIncrementalCommitTimes(int num) {
-    return makeIncrementalCommitTimes(num, 1);
-  }
-
-  public static List<String> makeIncrementalCommitTimes(int num, int firstOffsetSeconds) {
-    return makeIncrementalCommitTimes(num, firstOffsetSeconds, 0);
   }
 
   public static List<String> makeIncrementalCommitTimes(int num, int firstOffsetSeconds, int deltaSecs) {
@@ -354,7 +346,6 @@ public class HoodieTestTable {
       rollbackPartitionMetadata.setPartitionPath(entry.getKey());
       rollbackPartitionMetadata.setSuccessDeleteFiles(entry.getValue());
       rollbackPartitionMetadata.setFailedDeleteFiles(new ArrayList<>());
-      rollbackPartitionMetadata.setWrittenLogFiles(getWrittenLogFiles(instantTimeToDelete, entry));
       long rollbackLogFileSize = 50 + RANDOM.nextInt(500);
       String fileId = UUID.randomUUID().toString();
       String logFileName = logFileName(instantTimeToDelete, fileId, 0);
@@ -1045,7 +1036,7 @@ public class HoodieTestTable {
     return testTableState;
   }
 
-  private static List<HoodieWriteStat> generateHoodieWriteStatForPartition(Map<String, List<Pair<String, Integer>>> partitionToFileIdMap,
+  public static List<HoodieWriteStat> generateHoodieWriteStatForPartition(Map<String, List<Pair<String, Integer>>> partitionToFileIdMap,
                                                                            String commitTime, boolean bootstrap) {
     List<HoodieWriteStat> writeStats = new ArrayList<>();
     for (Map.Entry<String, List<Pair<String, Integer>>> entry : partitionToFileIdMap.entrySet()) {
@@ -1058,6 +1049,7 @@ public class HoodieTestTable {
         writeStat.setPartitionPath(partition);
         writeStat.setPath(partition + "/" + fileName);
         writeStat.setTotalWriteBytes(fileIdInfo.getValue());
+        writeStat.setFileSizeInBytes(fileIdInfo.getValue());
         writeStats.add(writeStat);
       }
     }
@@ -1083,6 +1075,7 @@ public class HoodieTestTable {
         writeStat.setPartitionPath(partition);
         writeStat.setPath(partition + "/" + fileName);
         writeStat.setTotalWriteBytes(fileIdInfo.getValue()[1]);
+        writeStat.setFileSizeInBytes(fileIdInfo.getValue()[1]);
         writeStats.add(writeStat);
       }
     }
