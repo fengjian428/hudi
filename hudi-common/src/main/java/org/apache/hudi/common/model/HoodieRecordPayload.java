@@ -44,11 +44,6 @@ public interface HoodieRecordPayload<T extends HoodieRecordPayload> extends Seri
   @PublicAPIMethod(maturity = ApiMaturityLevel.DEPRECATED)
   T preCombine(T oldValue);
 
-  @PublicAPIMethod(maturity = ApiMaturityLevel.DEPRECATED)
-  default T preCombine(T oldValue, Schema schema){
-    return preCombine(oldValue);
-  }
-
   /**
    * When more than one HoodieRecord have the same HoodieKey in the incoming batch, this function combines them before attempting to insert/upsert by taking in a property map.
    * Implementation can leverage the property to decide their business logic to do preCombine.
@@ -60,6 +55,20 @@ public interface HoodieRecordPayload<T extends HoodieRecordPayload> extends Seri
    */
   @PublicAPIMethod(maturity = ApiMaturityLevel.STABLE)
   default T preCombine(T oldValue, Properties properties) {
+    return preCombine(oldValue);
+  }
+
+  /**
+   * When more than one HoodieRecord have the same HoodieKey in the incoming batch, this function combines them before attempting to insert/upsert by taking in a schema.
+   * Implementation can leverage the schema to decide their business logic to do preCombine.
+   *
+   * @param oldValue   instance of the old {@link HoodieRecordPayload} to be combined with.
+   * @param schema Payload related schema. For example use schema to overwrite old instance for specified fields that doesn't equal to default value.
+   *
+   * @return the combined value
+   */
+  @PublicAPIMethod(maturity = ApiMaturityLevel.STABLE)
+  default T preCombine(T oldValue, Schema schema){
     return preCombine(oldValue);
   }
 

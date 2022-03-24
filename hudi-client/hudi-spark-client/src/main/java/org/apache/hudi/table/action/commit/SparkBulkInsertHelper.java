@@ -100,7 +100,7 @@ public class SparkBulkInsertHelper<T extends HoodieRecordPayload, R> extends Bas
 
     if (performDedupe) {
       dedupedRecords = (HoodieData<HoodieRecord<T>>) HoodieWriteHelper.newInstance().combineOnCondition(config.shouldCombineBeforeInsert(), inputRecords,
-          parallelism, table, config);
+          parallelism, table, config.getSchema());
     }
 
     final HoodieData<HoodieRecord<T>> repartitionedRecords;

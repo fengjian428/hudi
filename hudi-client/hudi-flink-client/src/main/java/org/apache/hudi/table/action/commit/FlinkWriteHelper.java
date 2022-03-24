@@ -92,7 +92,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
 
   @Override
   public List<HoodieRecord<T>> deduplicateRecords(
-      List<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, HoodieWriteConfig config) {
+      List<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, String schemaString) {
     // If index used is global, then records are expected to differ in their partitionPath
     Map<Object, List<HoodieRecord<T>>> keyedRecords = records.stream()
         .collect(Collectors.groupingBy(record -> record.getKey().getRecordKey()));
@@ -103,7 +103,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
       final T data2 = rec2.getData();
 
       if (schema[0] == null) {
-        schema[0] = new Schema.Parser().parse(config.getSchema());
+        schema[0] = new Schema.Parser().parse(schemaString);
       }
       @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, schema[0]);
       // we cannot allow the user to change the key or partitionPath, since that will affect

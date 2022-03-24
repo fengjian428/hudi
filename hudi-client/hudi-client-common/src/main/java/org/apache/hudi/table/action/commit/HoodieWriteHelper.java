@@ -53,7 +53,7 @@ public class HoodieWriteHelper<T extends HoodieRecordPayload, R> extends BaseWri
 
   @Override
   public HoodieData<HoodieRecord<T>> deduplicateRecords(
-      HoodieData<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, HoodieWriteConfig config) {
+      HoodieData<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, String schemaString) {
     boolean isIndexingGlobal = index.isGlobal();
     final Schema[] schema = {null};
     return records.mapToPair(record -> {
@@ -63,7 +63,7 @@ public class HoodieWriteHelper<T extends HoodieRecordPayload, R> extends BaseWri
       return Pair.of(key, record);
     }).reduceByKey((rec1, rec2) -> {
       if (schema[0] == null) {
-        schema[0] = new Schema.Parser().parse(config.getSchema());
+        schema[0] = new Schema.Parser().parse(schemaString);
       }
       @SuppressWarnings("unchecked")
       T reducedData = (T) rec2.getData().preCombine(rec1.getData(), schema[0]);
