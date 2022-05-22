@@ -23,11 +23,9 @@ import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.SchemaCompatibility;
 import org.apache.avro.generic.IndexedRecord;
-
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
-
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
@@ -47,15 +45,13 @@ import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIncompatibleSchemaException;
 import org.apache.hudi.exception.InvalidTableException;
-import org.apache.hudi.io.storage.HoodieHFileReader;
-import org.apache.hudi.io.storage.HoodieOrcReader;
 import org.apache.hudi.internal.schema.InternalSchema;
 import org.apache.hudi.internal.schema.io.FileBasedInternalSchemaStorageManager;
 import org.apache.hudi.internal.schema.utils.SerDeHelper;
-
+import org.apache.hudi.io.storage.HoodieHFileReader;
+import org.apache.hudi.io.storage.HoodieOrcReader;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-
 import org.apache.parquet.avro.AvroSchemaConverter;
 import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
@@ -65,7 +61,11 @@ import org.apache.parquet.schema.MessageType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+
+import static org.apache.hudi.avro.AvroSchemaUtils.appendFieldsToSchema;
+import static org.apache.hudi.avro.AvroSchemaUtils.createNullableSchema;
 
 /**
  * Helper class to read schema from data files and log files and to convert it between different formats.
@@ -99,8 +99,8 @@ public class TableSchemaResolver {
           // For COW table, the file has data written must be in parquet or orc format currently.
           if (instantAndCommitMetadata.isPresent()) {
             HoodieCommitMetadata commitMetadata = instantAndCommitMetadata.get().getRight();
-            String filePath = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().stream().findAny().get();
-            return readSchemaFromBaseFile(filePath);
+            Iterator<String> filePaths = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().iterator();
+            return fetchSchemaFromFiles(filePaths);
           } else {
             throw new IllegalArgumentException("Could not find any data file written for commit, "
                 + "so could not get schema for table " + metaClient.getBasePath());
@@ -110,13 +110,8 @@ public class TableSchemaResolver {
           // Determine the file format based on the file name, and then extract schema from it.
           if (instantAndCommitMetadata.isPresent()) {
             HoodieCommitMetadata commitMetadata = instantAndCommitMetadata.get().getRight();
-            String filePath = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().stream().findAny().get();
-            if (filePath.contains(HoodieFileFormat.HOODIE_LOG.getFileExtension())) {
-              // this is a log file
-              return readSchemaFromLogFile(new Path(filePath));
-            } else {
-              return readSchemaFromBaseFile(filePath);
-            }
+            Iterator<String> filePaths = commitMetadata.getFileIdAndFullPaths(metaClient.getBasePath()).values().iterator();
+            return fetchSchemaFromFiles(filePaths);
           } else {
             throw new IllegalArgumentException("Could not find any data file written for commit, "
                 + "so could not get schema for table " + metaClient.getBasePath());
@@ -128,6 +123,20 @@ public class TableSchemaResolver {
     } catch (IOException e) {
       throw new HoodieException("Failed to read data schema", e);
     }
+  }
+
+  private MessageType fetchSchemaFromFiles(Iterator<String> filePaths) throws IOException {
+    MessageType type = null;
+    while (filePaths.hasNext() && type == null) {
+      String filePath = filePaths.next();
+      if (filePath.contains(HoodieFileFormat.HOODIE_LOG.getFileExtension())) {
+        // this is a log file
+        type = readSchemaFromLogFile(new Path(filePath));
+      } else {
+        type = readSchemaFromBaseFile(filePath);
+      }
+    }
+    return type;
   }
 
   private MessageType readSchemaFromBaseFile(String filePath) throws IOException {
@@ -189,7 +198,7 @@ public class TableSchemaResolver {
     }
 
     Option<String[]> partitionFieldsOpt = metaClient.getTableConfig().getPartitionFields();
-    if (metaClient.getTableConfig().isDropPartitionColumns()) {
+    if (metaClient.getTableConfig().shouldDropPartitionColumns()) {
       schema = recreateSchemaWhenDropPartitionColumns(partitionFieldsOpt, schema);
     }
     return schema;
@@ -222,9 +231,9 @@ public class TableSchemaResolver {
         List<Field> newFields = new ArrayList<>();
         for (String partitionField: partitionFields) {
           newFields.add(new Schema.Field(
-              partitionField, Schema.create(Schema.Type.STRING), "", JsonProperties.NULL_VALUE));
+              partitionField, createNullableSchema(Schema.Type.STRING), "", JsonProperties.NULL_VALUE));
         }
-        schema = HoodieAvroUtils.createNewSchemaWithExtraFields(schema, newFields);
+        schema = appendFieldsToSchema(schema, newFields);
       }
     }
     return schema;

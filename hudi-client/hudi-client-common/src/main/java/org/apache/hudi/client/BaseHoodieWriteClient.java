@@ -334,7 +334,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
    * @param metadata instance of {@link HoodieCommitMetadata}.
    */
   protected void writeTableMetadata(HoodieTable table, String instantTime, String actionType, HoodieCommitMetadata metadata) {
-    context.setJobStatus(this.getClass().getSimpleName(), "Committing to metadata table");
+    context.setJobStatus(this.getClass().getSimpleName(), "Committing to metadata table: " + config.getTableName());
     table.getMetadataWriter(instantTime).ifPresent(w -> ((HoodieTableMetadataWriter) w).update(metadata, instantTime,
         table.isTableServiceAction(actionType)));
   }
@@ -795,7 +795,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     final String restoreInstantTime = HoodieActiveTimeline.createNewInstantTime();
     Timer.Context timerContext = metrics.getRollbackCtx();
     try {
-      HoodieTable<T, I, K, O> table = initTable(WriteOperationType.UNKNOWN, Option.empty(), initialMetadataTableIfNecessary);
+      HoodieTable<T, I, K, O> table = initTable(WriteOperationType.UNKNOWN, Option.of(restoreInstantTime), initialMetadataTableIfNecessary);
       Option<HoodieRestorePlan> restorePlanOption = table.scheduleRestore(context, restoreInstantTime, instantTime);
       if (restorePlanOption.isPresent()) {
         HoodieRestoreMetadata restoreMetadata = table.restore(context, restoreInstantTime, instantTime);
@@ -1035,9 +1035,10 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
   public void dropIndex(List<MetadataPartitionType> partitionTypes) {
     HoodieTable table = createTable(config, hadoopConf);
     String dropInstant = HoodieActiveTimeline.createNewInstantTime();
-    this.txnManager.beginTransaction();
+    HoodieInstant ownerInstant = new HoodieInstant(true, HoodieTimeline.INDEXING_ACTION, dropInstant);
+    this.txnManager.beginTransaction(Option.of(ownerInstant), Option.empty());
     try {
-      context.setJobStatus(this.getClass().getSimpleName(), "Dropping partitions from metadata table");
+      context.setJobStatus(this.getClass().getSimpleName(), "Dropping partitions from metadata table: " + config.getTableName());
       table.getMetadataWriter(dropInstant).ifPresent(w -> {
         try {
           ((HoodieTableMetadataWriter) w).dropMetadataPartitions(partitionTypes);
@@ -1046,7 +1047,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
         }
       });
     } finally {
-      this.txnManager.endTransaction();
+      this.txnManager.endTransaction(Option.of(ownerInstant));
     }
   }
 
@@ -1451,19 +1452,20 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     }
 
     HoodieTable table;
-
-    this.txnManager.beginTransaction();
+    Option<HoodieInstant> ownerInstant = Option.empty();
+    if (instantTime.isPresent()) {
+      ownerInstant = Option.of(new HoodieInstant(true, CommitUtils.getCommitActionType(operationType, metaClient.getTableType()), instantTime.get()));
+    }
+    this.txnManager.beginTransaction(ownerInstant, Option.empty());
     try {
       tryUpgrade(metaClient, instantTime);
       table = doInitTable(metaClient, instantTime, initialMetadataTableIfNecessary);
     } finally {
-      this.txnManager.endTransaction();
+      this.txnManager.endTransaction(ownerInstant);
     }
 
     // Validate table properties
-    metaClient.validateTableProperties(config.getProps(), operationType);
-    // Make sure that FS View is in sync
-    table.getHoodieView().sync();
+    metaClient.validateTableProperties(config.getProps());
 
     switch (operationType) {
       case INSERT:
@@ -1549,7 +1551,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     }
   }
 
-  private void tryUpgrade(HoodieTableMetaClient metaClient, Option<String> instantTime) {
+  protected void tryUpgrade(HoodieTableMetaClient metaClient, Option<String> instantTime) {
     UpgradeDowngrade upgradeDowngrade =
         new UpgradeDowngrade(metaClient, config, context, upgradeDowngradeHelper);
 
