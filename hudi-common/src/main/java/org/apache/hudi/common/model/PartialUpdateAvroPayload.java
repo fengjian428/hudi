@@ -21,10 +21,13 @@ package org.apache.hudi.common.model;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.StringUtils;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * subclass of OverwriteWithLatestAvroPayload used for delta streamer.
@@ -51,11 +54,17 @@ public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
             // use natural order for delete record
             return this;
         }
+        boolean isBaseRecord = false;
+        if (oldValue.orderingVal.compareTo(orderingVal) > 0) {
+            // pick the payload with greatest ordering value as insert record
+            isBaseRecord = true;
+        }
         try {
             GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schema).get();
-            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schema);
+            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schema, isBaseRecord);
             if (optValue.isPresent()) {
-                return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), this.orderingVal);
+                return new PartialUpdateAvroPayload((GenericRecord) optValue.get(),
+                        isBaseRecord ? oldValue.orderingVal : this.orderingVal);
             }
         } catch (Exception ex) {
             return this;
@@ -63,16 +72,22 @@ public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
         return this;
     }
 
-    @Override
-    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-
+    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, boolean isBaseRecord) throws IOException {
         Option<IndexedRecord> recordOption = getInsertValue(schema);
+
         if (!recordOption.isPresent()) {
             return Option.empty();
         }
 
-        GenericRecord insertRecord = (GenericRecord) recordOption.get();
-        GenericRecord currentRecord = (GenericRecord) currentValue;
+        GenericRecord insertRecord;
+        GenericRecord currentRecord;
+        if (isBaseRecord) {
+            insertRecord = (GenericRecord) currentValue;
+            currentRecord = (GenericRecord) recordOption.get();
+        } else {
+            insertRecord = (GenericRecord) recordOption.get();
+            currentRecord = (GenericRecord) currentValue;
+        }
 
         if (isDeleteRecord(insertRecord)) {
             return Option.empty();
@@ -88,6 +103,27 @@ public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
             });
             return Option.of(currentRecord);
         }
+    }
+
+    @Override
+    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
+        return this.combineAndGetUpdateValue(currentValue,schema,false);
+    }
+
+    @Override
+    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
+        String orderingField = prop.getProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY);
+        boolean isBaseRecord = false;
+
+        if (!StringUtils.isNullOrEmpty(orderingField)) {
+            String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+                    (GenericRecord) currentValue, orderingField, false, false);
+            if (oldOrderingVal.compareTo(orderingVal.toString()) > 0) {
+                // pick the payload with greatest ordering value as insert record
+                isBaseRecord = true;
+            }
+        }
+        return combineAndGetUpdateValue(currentValue, schema, isBaseRecord);
     }
 
     /**
