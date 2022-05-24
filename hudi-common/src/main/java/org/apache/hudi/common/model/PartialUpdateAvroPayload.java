@@ -26,11 +26,10 @@ import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Properties;
 
 /**
- * subclass of OverwriteWithLatestAvroPayload used for delta streamer.
+ * subclass of OverwriteNonDefaultsWithLatestAvroPayload used for delta streamer.
  *
  * <ol>
  * <li>preCombine - Picks the latest delta record for a key, based on an ordering field;
@@ -38,7 +37,7 @@ import java.util.Properties;
  * that doesn't equal defaultValue.
  * </ol>
  */
-public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
+public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
 
     public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
         super(record, orderingVal);
@@ -89,20 +88,7 @@ public class PartialUpdateAvroPayload extends OverwriteWithLatestAvroPayload {
             currentRecord = (GenericRecord) currentValue;
         }
 
-        if (isDeleteRecord(insertRecord)) {
-            return Option.empty();
-        } else {
-            List<Schema.Field> fields = schema.getFields();
-            fields.forEach(field -> {
-                Object value = insertRecord.get(field.name());
-                value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-                Object defaultValue = field.defaultVal();
-                if (!overwriteField(value, defaultValue)) {
-                    currentRecord.put(field.name(), value);
-                }
-            });
-            return Option.of(currentRecord);
-        }
+        return getMergedIndexedRecordOption(schema, insertRecord, currentRecord);
     }
 
     @Override
