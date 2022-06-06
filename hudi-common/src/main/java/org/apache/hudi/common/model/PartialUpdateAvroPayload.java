@@ -27,6 +27,7 @@ import org.apache.hudi.common.util.StringUtils;
 
 import java.io.IOException;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * subclass of OverwriteNonDefaultsWithLatestAvroPayload used for delta streamer.
@@ -39,6 +40,7 @@ import java.util.Properties;
  */
 public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
 
+    public static ConcurrentHashMap<String,Schema> schemaRepo = new ConcurrentHashMap<>();
     public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
         super(record, orderingVal);
     }
@@ -48,7 +50,15 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     }
 
     @Override
-    public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Schema schema) {
+    public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Properties properties) {
+        String schemaStringIn = properties.getProperty("schema");
+        Schema schemaInstance;
+        if (!schemaRepo.containsKey(schemaStringIn)) {
+            schemaInstance = new Schema.Parser().parse(schemaStringIn);
+            schemaRepo.put(schemaStringIn, schemaInstance);
+        } else {
+            schemaInstance = schemaRepo.get(schemaStringIn);
+        }
         if (oldValue.recordBytes.length == 0) {
             // use natural order for delete record
             return this;
@@ -59,8 +69,8 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
             isBaseRecord = true;
         }
         try {
-            GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schema).get();
-            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schema, isBaseRecord);
+            GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
+            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, isBaseRecord);
             if (optValue.isPresent()) {
                 return new PartialUpdateAvroPayload((GenericRecord) optValue.get(),
                         isBaseRecord ? oldValue.orderingVal : this.orderingVal);

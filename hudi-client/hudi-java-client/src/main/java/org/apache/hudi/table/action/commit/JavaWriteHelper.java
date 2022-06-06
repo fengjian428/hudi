@@ -35,6 +35,7 @@ import org.apache.hudi.table.HoodieTable;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 public class JavaWriteHelper<T extends HoodieRecordPayload,R> extends BaseWriteHelper<T, List<HoodieRecord<T>>,
@@ -68,13 +69,11 @@ public class JavaWriteHelper<T extends HoodieRecordPayload,R> extends BaseWriteH
       return Pair.of(key, record);
     }).collect(Collectors.groupingBy(Pair::getLeft));
 
-    final Schema[] schema = {null};
+    Properties properties = new Properties();
+    properties.put("schema", schemaString);
     return keyedRecords.values().stream().map(x -> x.stream().map(Pair::getRight).reduce((rec1, rec2) -> {
-      if (schema[0] == null) {
-        schema[0] = new Schema.Parser().parse(schemaString);
-      }
       @SuppressWarnings("unchecked")
-      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), schema[0]);
+      T reducedData = (T) rec1.getData().preCombine(rec2.getData(), properties);
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.

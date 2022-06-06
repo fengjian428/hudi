@@ -39,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class TestPartialUpdateAvroPayload {
   private Schema schema;
 
+  private Properties properties = new Properties();
   String jsonSchema = "{\n"
           + "  \"type\": \"record\",\n"
           + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
@@ -55,6 +56,8 @@ public class TestPartialUpdateAvroPayload {
   @BeforeEach
   public void setUp() throws Exception {
     schema = new Schema.Parser().parse(jsonSchema);
+    properties = new Properties();
+    properties.put("schema", jsonSchema);
   }
 
   @Test
@@ -94,8 +97,8 @@ public class TestPartialUpdateAvroPayload {
 
     PartialUpdateAvroPayload payload1 = new PartialUpdateAvroPayload(record1, 1);
     PartialUpdateAvroPayload payload2 = new PartialUpdateAvroPayload(record2, 2);
-    assertArrayEquals(payload1.preCombine(payload2, schema).recordBytes, new PartialUpdateAvroPayload(record4, 2).recordBytes);
-    assertArrayEquals(payload2.preCombine(payload1, schema).recordBytes, new PartialUpdateAvroPayload(record4, 2).recordBytes);
+    assertArrayEquals(payload1.preCombine(payload2, properties).recordBytes, new PartialUpdateAvroPayload(record4, 2).recordBytes);
+    assertArrayEquals(payload2.preCombine(payload1, properties).recordBytes, new PartialUpdateAvroPayload(record4, 2).recordBytes);
 
     assertEquals(record1, payload1.getInsertValue(schema).get());
     assertEquals(record2, payload2.getInsertValue(schema).get());
@@ -122,8 +125,8 @@ public class TestPartialUpdateAvroPayload {
 
     payload1 = new PartialUpdateAvroPayload(record1, 2);
     payload2 = new PartialUpdateAvroPayload(record2, 1);
-    assertArrayEquals(payload1.preCombine(payload2, schema).recordBytes, new PartialUpdateAvroPayload(record3, 2).recordBytes);
-    assertArrayEquals(payload2.preCombine(payload1, schema).recordBytes, new PartialUpdateAvroPayload(record3, 2).recordBytes);
+    assertArrayEquals(payload1.preCombine(payload2, properties).recordBytes, new PartialUpdateAvroPayload(record3, 2).recordBytes);
+    assertArrayEquals(payload2.preCombine(payload1, properties).recordBytes, new PartialUpdateAvroPayload(record3, 2).recordBytes);
   }
 
   @Test

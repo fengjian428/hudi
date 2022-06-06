@@ -40,6 +40,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -97,15 +98,13 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
     Map<Object, List<HoodieRecord<T>>> keyedRecords = records.stream()
         .collect(Collectors.groupingBy(record -> record.getKey().getRecordKey()));
 
-    final Schema[] schema = {null};
     return keyedRecords.values().stream().map(x -> x.stream().reduce((rec1, rec2) -> {
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      if (schema[0] == null) {
-        schema[0] = new Schema.Parser().parse(schemaString);
-      }
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, schema[0]);
+      Properties properties = new Properties();
+      properties.put("schema", schemaString);
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, properties);
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.
