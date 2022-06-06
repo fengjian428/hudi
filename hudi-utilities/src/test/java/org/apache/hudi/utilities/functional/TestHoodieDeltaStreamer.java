@@ -253,7 +253,6 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
         cfg.schemaProviderClassName = defaultSchemaProviderClassName;
       }
       cfg.allowCommitOnNoCheckpointChange = allowCommitOnNoCheckpointChange;
-      cfg.configs.add("--hoodie-conf hoodie.filesystem.view.type=MEMORY");
       return cfg;
     }
 
