@@ -40,92 +40,93 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
 
-    public static ConcurrentHashMap<String,Schema> schemaRepo = new ConcurrentHashMap<>();
-    public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
-        super(record, orderingVal);
+  public static ConcurrentHashMap<String, Schema> schemaRepo = new ConcurrentHashMap<>();
+
+  public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
+    super(record, orderingVal);
+  }
+
+  public PartialUpdateAvroPayload(Option<GenericRecord> record) {
+    super(record); // natural order
+  }
+
+  @Override
+  public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Properties properties) {
+    String schemaStringIn = properties.getProperty("schema");
+    Schema schemaInstance;
+    if (!schemaRepo.containsKey(schemaStringIn)) {
+      schemaInstance = new Schema.Parser().parse(schemaStringIn);
+      schemaRepo.put(schemaStringIn, schemaInstance);
+    } else {
+      schemaInstance = schemaRepo.get(schemaStringIn);
+    }
+    if (oldValue.recordBytes.length == 0) {
+      // use natural order for delete record
+      return this;
+    }
+    boolean isBaseRecord = false;
+    if (oldValue.orderingVal.compareTo(orderingVal) > 0) {
+      // pick the payload with greatest ordering value as insert record
+      isBaseRecord = true;
+    }
+    try {
+      GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
+      Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, isBaseRecord);
+      if (optValue.isPresent()) {
+        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(),
+            isBaseRecord ? oldValue.orderingVal : this.orderingVal);
+      }
+    } catch (Exception ex) {
+      return this;
+    }
+    return this;
+  }
+
+  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, boolean isBaseRecord) throws IOException {
+    Option<IndexedRecord> recordOption = getInsertValue(schema);
+
+    if (!recordOption.isPresent()) {
+      return Option.empty();
     }
 
-    public PartialUpdateAvroPayload(Option<GenericRecord> record) {
-        super(record); // natural order
+    GenericRecord insertRecord;
+    GenericRecord currentRecord;
+    if (isBaseRecord) {
+      insertRecord = (GenericRecord) currentValue;
+      currentRecord = (GenericRecord) recordOption.get();
+    } else {
+      insertRecord = (GenericRecord) recordOption.get();
+      currentRecord = (GenericRecord) currentValue;
     }
 
-    @Override
-    public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Properties properties) {
-        String schemaStringIn = properties.getProperty("schema");
-        Schema schemaInstance;
-        if (!schemaRepo.containsKey(schemaStringIn)) {
-            schemaInstance = new Schema.Parser().parse(schemaStringIn);
-            schemaRepo.put(schemaStringIn, schemaInstance);
-        } else {
-            schemaInstance = schemaRepo.get(schemaStringIn);
-        }
-        if (oldValue.recordBytes.length == 0) {
-            // use natural order for delete record
-            return this;
-        }
-        boolean isBaseRecord = false;
-        if (oldValue.orderingVal.compareTo(orderingVal) > 0) {
-            // pick the payload with greatest ordering value as insert record
-            isBaseRecord = true;
-        }
-        try {
-            GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
-            Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, isBaseRecord);
-            if (optValue.isPresent()) {
-                return new PartialUpdateAvroPayload((GenericRecord) optValue.get(),
-                        isBaseRecord ? oldValue.orderingVal : this.orderingVal);
-            }
-        } catch (Exception ex) {
-            return this;
-        }
-        return this;
+    return getMergedIndexedRecordOption(schema, insertRecord, currentRecord);
+  }
+
+  @Override
+  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
+    return this.combineAndGetUpdateValue(currentValue, schema, false);
+  }
+
+  @Override
+  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
+    String orderingField = prop.getProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY);
+    boolean isBaseRecord = false;
+
+    if (!StringUtils.isNullOrEmpty(orderingField)) {
+      String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+          (GenericRecord) currentValue, orderingField, false, false);
+      if (oldOrderingVal.compareTo(orderingVal.toString()) > 0) {
+        // pick the payload with greatest ordering value as insert record
+        isBaseRecord = true;
+      }
     }
+    return combineAndGetUpdateValue(currentValue, schema, isBaseRecord);
+  }
 
-    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, boolean isBaseRecord) throws IOException {
-        Option<IndexedRecord> recordOption = getInsertValue(schema);
-
-        if (!recordOption.isPresent()) {
-            return Option.empty();
-        }
-
-        GenericRecord insertRecord;
-        GenericRecord currentRecord;
-        if (isBaseRecord) {
-            insertRecord = (GenericRecord) currentValue;
-            currentRecord = (GenericRecord) recordOption.get();
-        } else {
-            insertRecord = (GenericRecord) recordOption.get();
-            currentRecord = (GenericRecord) currentValue;
-        }
-
-        return getMergedIndexedRecordOption(schema, insertRecord, currentRecord);
-    }
-
-    @Override
-    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-        return this.combineAndGetUpdateValue(currentValue,schema,false);
-    }
-
-    @Override
-    public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
-        String orderingField = prop.getProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY);
-        boolean isBaseRecord = false;
-
-        if (!StringUtils.isNullOrEmpty(orderingField)) {
-            String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
-                    (GenericRecord) currentValue, orderingField, false, false);
-            if (oldOrderingVal.compareTo(orderingVal.toString()) > 0) {
-                // pick the payload with greatest ordering value as insert record
-                isBaseRecord = true;
-            }
-        }
-        return combineAndGetUpdateValue(currentValue, schema, isBaseRecord);
-    }
-
-    /**
-     * Return true if value equals defaultValue otherwise false.
-     */
-    public Boolean overwriteField(Object value, Object defaultValue) {
-        return value == null;
-    }
+  /**
+   * Return true if value equals defaultValue otherwise false.
+   */
+  public Boolean overwriteField(Object value, Object defaultValue) {
+    return value == null;
+  }
 }

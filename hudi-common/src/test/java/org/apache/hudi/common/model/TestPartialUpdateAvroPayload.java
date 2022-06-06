@@ -41,17 +41,17 @@ public class TestPartialUpdateAvroPayload {
 
   private Properties properties = new Properties();
   String jsonSchema = "{\n"
-          + "  \"type\": \"record\",\n"
-          + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
-          + "  \"fields\": [\n"
-          + "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n"
-          + "    {\"name\": \"partition\", \"type\": [\"null\", \"string\"]},\n"
-          + "    {\"name\": \"ts\", \"type\": [\"null\", \"long\"]},\n"
-          + "    {\"name\": \"_hoodie_is_deleted\", \"type\": [\"null\", \"boolean\"], \"default\":false},\n"
-          + "    {\"name\": \"city\", \"type\": [\"null\", \"string\"]},\n"
-          + "    {\"name\": \"child\", \"type\": [\"null\", {\"type\": \"array\", \"items\": \"string\"}]}\n"
-          + "  ]\n"
-          + "}";
+      + "  \"type\": \"record\",\n"
+      + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
+      + "  \"fields\": [\n"
+      + "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"partition\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"ts\", \"type\": [\"null\", \"long\"]},\n"
+      + "    {\"name\": \"_hoodie_is_deleted\", \"type\": [\"null\", \"boolean\"], \"default\":false},\n"
+      + "    {\"name\": \"city\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"child\", \"type\": [\"null\", {\"type\": \"array\", \"items\": \"string\"}]}\n"
+      + "  ]\n"
+      + "}";
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -173,10 +173,10 @@ public class TestPartialUpdateAvroPayload {
   @Test
   public void testNullColumn() throws IOException {
     Schema avroSchema = Schema.createRecord(Arrays.asList(
-            new Schema.Field("id", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
-            new Schema.Field("name", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
-            new Schema.Field("age", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
-            new Schema.Field("job", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE)
+        new Schema.Field("id", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
+        new Schema.Field("name", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
+        new Schema.Field("age", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE),
+        new Schema.Field("job", Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.NULL)), "", JsonProperties.NULL_VALUE)
     ));
     GenericRecord record1 = new GenericData.Record(avroSchema);
     record1.put("id", "1");
