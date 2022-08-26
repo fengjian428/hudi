@@ -21,11 +21,13 @@ package org.apache.hudi.common.model;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
+
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.common.util.StringUtils;
+import org.apache.hudi.exception.HoodieException;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -64,17 +66,14 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
       // use natural order for delete record
       return this;
     }
-    boolean isBaseRecord = false;
-    if (oldValue.orderingVal.compareTo(orderingVal) > 0) {
-      // pick the payload with greatest ordering value as insert record
-      isBaseRecord = true;
-    }
+
     try {
       GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
-      Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, isBaseRecord);
+      Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, this.orderingVal.toString());
+      // Rebuild ordering value if required
+      String newOrderingVal = rebuildOrderingValMap((GenericRecord) optValue.get(), this.orderingVal.toString());
       if (optValue.isPresent()) {
-        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(),
-            isBaseRecord ? oldValue.orderingVal : this.orderingVal);
+        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), newOrderingVal);
       }
     } catch (Exception ex) {
       return this;
@@ -82,45 +81,110 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     return this;
   }
 
-  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, boolean isBaseRecord) throws IOException {
+  public Option<IndexedRecord> combineAndGetUpdateValue(
+      IndexedRecord currentValue, Schema schema, String newOrderingValWithMappings) throws IOException {
     Option<IndexedRecord> recordOption = getInsertValue(schema);
-
     if (!recordOption.isPresent()) {
       return Option.empty();
     }
 
-    GenericRecord insertRecord;
-    GenericRecord currentRecord;
-    if (isBaseRecord) {
-      insertRecord = (GenericRecord) currentValue;
-      currentRecord = (GenericRecord) recordOption.get();
-    } else {
-      insertRecord = (GenericRecord) recordOption.get();
-      currentRecord = (GenericRecord) currentValue;
-    }
+    // Perform a deserialization again to prevent resultRecord from sharing the same reference as recordOption
+    GenericRecord resultRecord = (GenericRecord) getInsertValue(schema).get();
+    List<Schema.Field> fields = schema.getFields();
 
-    return getMergedIndexedRecordOption(schema, insertRecord, currentRecord);
+    // newOrderingValWithMappings = _ts1:name1,price1=999;_ts2:name2,price2=;
+    for (String newOrderingFieldMapping : newOrderingValWithMappings.split(";")) {
+      String orderingField = newOrderingFieldMapping.split(":")[0];
+      String newOrderingVal = getNewOrderingVal(orderingField, newOrderingFieldMapping);
+      String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+          (GenericRecord) currentValue, orderingField, true, false);
+      if (oldOrderingVal == null) {
+        oldOrderingVal = "";
+      }
+
+      // No update required
+      if (oldOrderingVal.isEmpty() && newOrderingVal.isEmpty()) {
+        continue;
+      }
+
+      // Pick the payload with greatest ordering value as insert record
+      boolean isBaseRecord = false;
+      try {
+        if (Long.parseLong(oldOrderingVal) > Long.parseLong(newOrderingVal)) {
+          isBaseRecord = true;
+        }
+      } catch (NumberFormatException e) {
+        if (oldOrderingVal.compareTo(newOrderingVal) > 0) {
+          isBaseRecord = true;
+        }
+      }
+
+      // Initialise the fields of the sub-tables
+      GenericRecord insertRecord;
+      if (isBaseRecord) {
+        insertRecord = (GenericRecord) currentValue;
+        // resultRecord is already assigned as recordOption
+      } else {
+        insertRecord = (GenericRecord) recordOption.get();
+        GenericRecord currentRecord = (GenericRecord) currentValue;
+        fields.stream()
+            .filter(f -> newOrderingFieldMapping.contains(f.name()))
+            .forEach(f -> resultRecord.put(f.name(), currentRecord.get(f.name())));
+      }
+
+      // If any of the sub-table records is flagged for deletion, delete entire row
+      if (isDeleteRecord(insertRecord)) {
+        return Option.empty();
+      } else {
+        // Perform partial update
+        fields.stream()
+            .filter(f -> newOrderingFieldMapping.contains(f.name()))
+            .forEach(f -> {
+              Object value = insertRecord.get(f.name());
+              value = f.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
+              resultRecord.put(f.name(), value);
+            });
+      }
+    }
+    return Option.of(resultRecord);
   }
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-    return this.combineAndGetUpdateValue(currentValue, schema, false);
+    return this.combineAndGetUpdateValue(currentValue, schema, this.orderingVal.toString());
   }
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
-    String orderingField = prop.getProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY);
-    boolean isBaseRecord = false;
-
-    if (!StringUtils.isNullOrEmpty(orderingField)) {
-      String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
-          (GenericRecord) currentValue, orderingField, false, false);
-      if (oldOrderingVal.compareTo(orderingVal.toString()) > 0) {
-        // pick the payload with greatest ordering value as insert record
-        isBaseRecord = true;
-      }
+    Option<IndexedRecord> recordOption = getInsertValue(schema);
+    if (!recordOption.isPresent()) {
+      return Option.empty();
     }
-    return combineAndGetUpdateValue(currentValue, schema, isBaseRecord);
+    String newOrderingFieldMappings = rebuildOrderingValMap(
+        (GenericRecord) recordOption.get(), this.orderingVal.toString());
+    return combineAndGetUpdateValue(currentValue, schema, newOrderingFieldMappings);
+  }
+
+  private static String getNewOrderingVal(String orderingFieldToUse, String newOrderingValWithMapping) {
+    String[] newOrderingValWithMappingArr = newOrderingValWithMapping.split(":.*=");
+    if (newOrderingValWithMappingArr[0].equals(orderingFieldToUse)) {
+      return newOrderingValWithMappingArr.length > 1 ? newOrderingValWithMappingArr[1] : "";
+    }
+    throw new HoodieException("No ordering field of interest found");
+  }
+
+  private static String rebuildOrderingValMap(GenericRecord record, String oldOrderingValWithMappings) {
+    StringBuilder sb = new StringBuilder();
+    for (String oldOrderingValWithMapping : oldOrderingValWithMappings.split(";")) {
+      String[] oldOrderingValWithMappingArr = oldOrderingValWithMapping.split(":.*=");
+      Object orderingVal = record.get(oldOrderingValWithMappingArr[0]);
+      orderingVal = orderingVal == null ? "" : orderingVal;
+      sb.append(oldOrderingValWithMapping.split("=")[0])
+          .append("=")
+          .append(orderingVal)
+          .append(";");
+    }
+    return sb.toString();
   }
 
   /**
