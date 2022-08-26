@@ -83,7 +83,7 @@ public class DeltaGenerator implements Serializable {
     this.jsc = jsc;
     this.sparkSession = sparkSession;
     this.schemaStr = schemaStr;
-    this.recordRowKeyFieldNames = keyGenerator.getRecordKeyFields();
+    this.recordRowKeyFieldNames = keyGenerator.getRecordKeyFieldNames();
     this.partitionPathFieldNames = keyGenerator.getPartitionPathFields();
   }
 
@@ -216,15 +216,22 @@ public class DeltaGenerator implements Serializable {
         adjustedRDD = deltaInputReader.read(config.getNumRecordsDelete());
         adjustedRDD = adjustRDDToGenerateExactNumUpdates(adjustedRDD, jsc, config.getNumRecordsDelete());
       } else {
-        deltaInputReader =
-            new DFSHoodieDatasetInputReader(jsc, ((DFSDeltaConfig) deltaOutputConfig).getDatasetOutputPath(),
-                schemaStr);
-        if (config.getFractionUpsertPerFile() > 0) {
-          adjustedRDD = deltaInputReader.read(config.getNumDeletePartitions(), config.getNumUpsertFiles(),
-              config.getFractionUpsertPerFile());
+        if (((DFSDeltaConfig) deltaOutputConfig).shouldUseHudiToGenerateUpdates()) {
+          deltaInputReader =
+              new DFSHoodieDatasetInputReader(jsc, ((DFSDeltaConfig) deltaOutputConfig).getDatasetOutputPath(),
+                  schemaStr);
+          if (config.getFractionUpsertPerFile() > 0) {
+            adjustedRDD = deltaInputReader.read(config.getNumDeletePartitions(), config.getNumUpsertFiles(),
+                config.getFractionUpsertPerFile());
+          } else {
+            adjustedRDD = deltaInputReader.read(config.getNumDeletePartitions(), config.getNumUpsertFiles(), config
+                .getNumRecordsDelete());
+          }
         } else {
-          adjustedRDD = deltaInputReader.read(config.getNumDeletePartitions(), config.getNumUpsertFiles(), config
-              .getNumRecordsDelete());
+          deltaInputReader = new DFSAvroDeltaInputReader(sparkSession, schemaStr,
+              ((DFSDeltaConfig) deltaOutputConfig).getDeltaBasePath(), Option.empty(), Option.empty());
+          adjustedRDD = deltaInputReader.read(config.getNumRecordsDelete());
+          adjustedRDD = adjustRDDToGenerateExactNumUpdates(adjustedRDD, jsc, config.getNumRecordsDelete());
         }
       }
 

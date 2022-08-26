@@ -180,7 +180,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
         // base file to denote some log appends happened on a slice. writeToken will still fence concurrent
         // writers.
         // https://issues.apache.org/jira/browse/HUDI-1517
-        createMarkerFile(partitionPath, FSUtils.makeDataFileName(baseInstantTime, writeToken, fileId, hoodieTable.getBaseFileExtension()));
+        createMarkerFile(partitionPath, FSUtils.makeBaseFileName(baseInstantTime, writeToken, fileId, hoodieTable.getBaseFileExtension()));
 
         this.writer = createLogWriter(fileSlice, baseInstantTime);
       } catch (Exception e) {
@@ -471,10 +471,12 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
 
     return HoodieLogFormat.newWriterBuilder()
         .onParentPath(FSUtils.getPartitionPath(hoodieTable.getMetaClient().getBasePath(), partitionPath))
-        .withFileId(fileId).overBaseCommit(baseCommitTime)
+        .withFileId(fileId)
+        .overBaseCommit(baseCommitTime)
         .withLogVersion(latestLogFile.map(HoodieLogFile::getLogVersion).orElse(HoodieLogFile.LOGFILE_BASE_VERSION))
         .withFileSize(latestLogFile.map(HoodieLogFile::getFileSize).orElse(0L))
-        .withSizeThreshold(config.getLogFileMaxSize()).withFs(fs)
+        .withSizeThreshold(config.getLogFileMaxSize())
+        .withFs(fs)
         .withRolloverLogWriteToken(writeToken)
         .withLogWriteToken(latestLogFile.map(x -> FSUtils.getWriteTokenFromLogPath(x.getPath())).orElse(writeToken))
         .withFileExtension(HoodieLogFile.DELTA_EXTENSION).build();
