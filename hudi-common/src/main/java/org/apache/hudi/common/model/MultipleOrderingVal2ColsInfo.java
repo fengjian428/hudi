@@ -18,6 +18,10 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.hudi.avro.HoodieAvroUtils;
+
+import org.apache.avro.generic.GenericRecord;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -26,11 +30,17 @@ import java.util.List;
  * MultipleOrderingVal2ColsInfo
  *  _ts1=999:name1,price1;_ts2=111:name2,price2
  * _ts1:name1,price1=999;_ts2:name2,price2=111
+ * _ts1:name1,price1;_ts2:name2,price2
  */
 public class MultipleOrderingVal2ColsInfo {
   private List<OrderingVal2ColsInfo> orderingVal2ColsInfoList = new ArrayList<>();
+  private GenericRecord record;
 
   public MultipleOrderingVal2ColsInfo(String multipleOrderingFieldsWithColsText) {
+   this(multipleOrderingFieldsWithColsText, null);
+  }
+  public MultipleOrderingVal2ColsInfo(String multipleOrderingFieldsWithColsText, GenericRecord record) {
+    this.record = record;
     for (String orderingFieldWithColsText : multipleOrderingFieldsWithColsText.split(";")) {
       if (orderingFieldWithColsText == null || orderingFieldWithColsText.isEmpty()) {
         continue;
@@ -66,11 +76,10 @@ public class MultipleOrderingVal2ColsInfo {
 
     public OrderingVal2ColsInfo(String orderingFieldWithColsText) {
       String[] orderInfo2ColsArr = orderingFieldWithColsText.split(":");
-      String[] orderingField2Value = orderInfo2ColsArr[0].split("=");
       String[] columnArr = orderInfo2ColsArr[1].split(",");
-      this.orderingField = orderingField2Value[0];
-      if (orderingField2Value.length > 1 && !orderingField2Value[1].equals("null")) {
-        this.orderingValue = Long.parseLong(orderingField2Value[1]);
+      this.orderingField = orderInfo2ColsArr[0];
+      if (record != null) {
+        this.orderingValue = (Comparable) HoodieAvroUtils.getNestedFieldVal(record, this.orderingField, true, false); //Long.parseLong(orderingField2Value[1]);
       }
       this.columnNames = Arrays.asList(columnArr);
     }

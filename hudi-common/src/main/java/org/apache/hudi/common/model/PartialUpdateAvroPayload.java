@@ -94,7 +94,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     Map<String, Schema.Field> name2Field = schema.getFields().stream().collect(Collectors.toMap(Schema.Field::name, item -> item));
     // multipleOrderingFieldsWithCols = _ts1:name1,price1=999;_ts2:name2,price2=;
 
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(multipleOrderingFieldsWithCols);
+    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(multipleOrderingFieldsWithCols, (GenericRecord) incomingRecord.get());
     final Boolean[] deleteFlag = new Boolean[1];
     deleteFlag[0] = false;
     multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
@@ -162,7 +162,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
   }
 
   private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText);
+    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText, record);
     multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
       Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
       orderingVal2ColsInfo.setOrderingValue((Comparable) orderingVal);
