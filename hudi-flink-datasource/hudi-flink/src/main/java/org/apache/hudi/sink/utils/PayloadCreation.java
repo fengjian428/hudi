@@ -79,7 +79,7 @@ public class PayloadCreation implements Serializable {
       Comparable<?> orderingVal;
       if (preCombineField.contains(";")) {
         // Multi ordering field support
-        orderingVal = (Comparable<?>) HoodieAvroUtils.getMultipleNestedFieldVals(record, preCombineField, false);
+        orderingVal = preCombineField;
       } else {
         orderingVal = (Comparable<?>) HoodieAvroUtils.getNestedFieldVal(record,
             preCombineField, false, false);

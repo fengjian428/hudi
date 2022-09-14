@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
 
   public static ConcurrentHashMap<String, Schema> schemaRepo = new ConcurrentHashMap<>();
+  private boolean isPreCombining = false;
 
   public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
     super(record, orderingVal);
@@ -54,6 +55,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
 
   @Override
   public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Properties properties) {
+    isPreCombining = true;
     String schemaStringIn = properties.getProperty("schema");
     Schema schemaInstance;
     if (!schemaRepo.containsKey(schemaStringIn)) {
@@ -68,15 +70,15 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     }
 
     try {
-      GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
+      GenericRecord indexedOldValue = HoodieAvroUtils.bytesToAvro(oldValue.recordBytes, schemaInstance);
       Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, this.orderingVal.toString());
-      // Rebuild ordering value if required
-      String newOrderingFieldWithColsText = rebuildWithNewOrderingVal((GenericRecord) optValue.get(), this.orderingVal.toString());
       if (optValue.isPresent()) {
-        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), newOrderingFieldWithColsText);
+        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), this.orderingVal.toString());
       }
     } catch (Exception ex) {
       return this;
+    } finally {
+      isPreCombining = false;
     }
     return this;
   }
@@ -135,7 +137,10 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     });
 
     if (deleteFlag[0]) {
-      return Option.empty();
+      resultRecord.put("_hoodie_is_deleted", true);
+      if (!isPreCombining) {
+        return Option.empty();
+      }
     }
     return Option.of(resultRecord);
   }
@@ -151,23 +156,12 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     if (!recordOption.isPresent()) {
       return Option.empty();
     }
-    String orderingFieldWithColsText = rebuildWithNewOrderingVal(
-        (GenericRecord) recordOption.get(), this.orderingVal.toString());
-    return combineAndGetUpdateValue(currentValue, schema, orderingFieldWithColsText);
+    return combineAndGetUpdateValue(currentValue, schema, this.orderingVal.toString());
   }
 
   private static String getOrderingValForOneOrderingField(String newOrderingValWithMapping) {
     String[] newOrderingValWithMappingArr = newOrderingValWithMapping.split(":.*=");
     return newOrderingValWithMappingArr.length > 1 ? newOrderingValWithMappingArr[1] : "";
-  }
-
-  private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText, record);
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
-      Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
-      orderingVal2ColsInfo.setOrderingValue((Comparable) orderingVal);
-    });
-   return multipleOrderingVal2ColsInfo.generateOrderingText();
   }
 
   /**

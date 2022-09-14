@@ -496,15 +496,6 @@ public class HoodieAvroUtils {
     return obj == null ? "" : StringUtils.objToString(obj);
   }
 
-  public static Object getMultipleNestedFieldVals(GenericRecord record, String fieldMappings, boolean consistentLogicalTimestampEnabled) {
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(fieldMappings);
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
-      Object val = getNestedFieldVal(record, orderingVal2ColsInfo.getOrderingField(), true, consistentLogicalTimestampEnabled);
-      orderingVal2ColsInfo.setOrderingValue((Comparable) val);
-    });
-    return multipleOrderingVal2ColsInfo.generateOrderingText();
-  }
-  
   /**
    * Obtain value of the provided field, denoted by dot notation. e.g: a.b.c
    */
