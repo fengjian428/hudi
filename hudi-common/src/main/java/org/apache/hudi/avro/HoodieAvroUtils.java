@@ -500,7 +500,7 @@ public class HoodieAvroUtils {
     MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(fieldMappings);
     multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
       Object val = getNestedFieldVal(record, orderingVal2ColsInfo.getOrderingField(), true, consistentLogicalTimestampEnabled);
-      orderingVal2ColsInfo.setOrderingValue(val.toString());
+      orderingVal2ColsInfo.setOrderingValue((Comparable) val);
     });
     return multipleOrderingVal2ColsInfo.generateOrderingText();
   }

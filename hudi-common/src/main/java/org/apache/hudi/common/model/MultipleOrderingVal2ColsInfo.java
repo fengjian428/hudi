@@ -49,7 +49,7 @@ public class MultipleOrderingVal2ColsInfo {
     orderingVal2ColsInfoList.stream().forEach(orderingVal2ColsInfo -> {
       sb.append(orderingVal2ColsInfo.orderingField);
       sb.append("=");
-      sb.append(orderingVal2ColsInfo.orderingValue);
+      sb.append(orderingVal2ColsInfo.orderingValue == null ? "null" : orderingVal2ColsInfo.orderingValue.toString());
       sb.append(":");
       sb.append(String.join(",", orderingVal2ColsInfo.getColumnNames()));
       sb.append(";");
@@ -61,7 +61,7 @@ public class MultipleOrderingVal2ColsInfo {
 
   public class OrderingVal2ColsInfo {
     private String orderingField;
-    private String orderingValue;
+    private Comparable orderingValue;
     private List<String> columnNames;
 
     public OrderingVal2ColsInfo(String orderingFieldWithColsText) {
@@ -69,8 +69,8 @@ public class MultipleOrderingVal2ColsInfo {
       String[] orderingField2Value = orderInfo2ColsArr[0].split("=");
       String[] columnArr = orderInfo2ColsArr[1].split(",");
       this.orderingField = orderingField2Value[0];
-      if (orderingField2Value.length > 1) {
-        this.orderingValue = orderingField2Value[1];
+      if (orderingField2Value.length > 1 && !orderingField2Value[1].equals("null")) {
+        this.orderingValue = Long.parseLong(orderingField2Value[1]);
       }
       this.columnNames = Arrays.asList(columnArr);
     }
@@ -79,11 +79,11 @@ public class MultipleOrderingVal2ColsInfo {
       return orderingField;
     }
 
-    public String getOrderingValue() {
+    public Comparable getOrderingValue() {
       return orderingValue;
     }
 
-    public void setOrderingValue(String value) {
+    public void setOrderingValue(Comparable value) {
       this.orderingValue = value;
     }
 

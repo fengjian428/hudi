@@ -98,27 +98,18 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     final Boolean[] deleteFlag = new Boolean[1];
     deleteFlag[0] = false;
     multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
-      String persistOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+      Comparable persistOrderingVal = (Comparable) HoodieAvroUtils.getNestedFieldVal(
           (GenericRecord) currentValue, orderingVal2ColsInfo.getOrderingField(), true, false);
-      if (persistOrderingVal == null) {
-        persistOrderingVal = "";
-      }
 
       // No update required
-      if (persistOrderingVal.isEmpty() && orderingVal2ColsInfo.getOrderingField().isEmpty()) {
+      if (persistOrderingVal == null && orderingVal2ColsInfo.getOrderingField().isEmpty()) {
         return;
       }
 
       // Pick the payload with greatest ordering value as insert record
       boolean needUpdatePersistData = false;
-      try {
-        if (Long.parseLong(persistOrderingVal) < Long.parseLong(orderingVal2ColsInfo.getOrderingValue())) {
-          needUpdatePersistData = true;
-        }
-      } catch (NumberFormatException e) {
-        if (persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) < 0) {
-          needUpdatePersistData = true;
-        }
+      if (persistOrderingVal == null || (orderingVal2ColsInfo.getOrderingValue() != null && persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) <= 0)) {
+        needUpdatePersistData = true;
       }
 
       // Initialise the fields of the sub-tables
@@ -129,7 +120,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
         orderingVal2ColsInfo.getColumnNames().stream()
             .filter(fieldName -> name2Field.containsKey(fieldName))
             .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
-        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(persistOrderingVal));
+        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), persistOrderingVal);
       } else {
         insertRecord = (GenericRecord) incomingRecord.get();
         orderingVal2ColsInfo.getColumnNames().stream()
@@ -174,7 +165,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText);
     multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
       Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
-      orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
+      orderingVal2ColsInfo.setOrderingValue((Comparable) orderingVal);
     });
    return multipleOrderingVal2ColsInfo.generateOrderingText();
   }
