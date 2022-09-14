@@ -18,7 +18,6 @@
 
 package org.apache.hudi.table.action.commit;
 
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieListData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
@@ -27,17 +26,12 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -103,14 +97,6 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
     return keyedRecords.values().stream().map(x -> x.stream().reduce((rec1, rec2) -> {
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
-
-      try {
-        GenericRecord record1 = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) data1).recordBytes, new Schema.Parser().parse(schemaString));
-        GenericRecord record2 = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) data2).recordBytes, new Schema.Parser().parse(schemaString));
-        record1.toString();
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
 
       Properties properties = new Properties();
       properties.put("schema", schemaString);
