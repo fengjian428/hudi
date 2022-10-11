@@ -18,7 +18,6 @@
 
 package org.apache.hudi.common.util;
 
-import org.openjdk.jol.info.GraphLayout;
 
 /**
  * Contains utility methods for calculating the memory usage of objects. It only works on the HotSpot and OpenJ9 JVMs, and infers
@@ -54,6 +53,6 @@ public class ObjectSizeCalculator {
     //       that the incoming object is serializable. We could have used Java's Instrumentation API, but it
     //       needs an instrumentation agent that can be hooked to the JVM. In lieu of that, we are using JOL.
     //       GraphLayout gives the deep size of an object, including the size of objects that are referenced from the given object.
-    return obj == null ? 0 : GraphLayout.parseInstance(obj).totalSize();
+    return 0;
   }
 }
