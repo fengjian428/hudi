@@ -18,12 +18,19 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.parquet.Strings;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.stream.Collectors;
 
 /**
  * Unit tests {@link LeetCode}.
@@ -210,5 +217,79 @@ public class LeetCode {
       return root2;
     }
     return root1;
+  }
+
+  public int maxChunksToSorted(int[] arr) {
+
+    int[] index = new int[arr.length];
+    for (int i = 0; i < arr.length; i++) {
+      index[arr[i]] = i;
+    }
+
+    int ans = 0;
+    int max = 0;
+    int current = 0;
+    for (int i = 0; i < arr.length; i++) {
+      if (arr[i] > max) {
+        max = arr[i];
+      }
+      if (arr[i] == current) {
+        ans++;
+
+      }
+
+      for (int j = i; j < arr.length; j++) {
+      }
+    }
+    return ans;
+  }
+
+  @Test
+  public void testpossibleBipartition() throws IOException {
+//    System.out.println(res);
+  }
+  public boolean possibleBipartition(int n, int[][] dislikes) {
+    Map<Integer, List<Integer>> route = new HashMap<>();
+    for(int i=0;i< dislikes.length;i++){
+      if(!route.containsKey(dislikes[i][0])){
+        List<Integer> nexts = new ArrayList<>();
+        route.put(dislikes[i][0], nexts);
+      }
+     route.get(dislikes[i][0]).add(dislikes[i][1]);
+    }
+    route.forEach((key, list)->{
+     System.out.println(key+":"+ list.stream().map(String::valueOf)
+         .collect(Collectors.joining(",")));
+    });
+    int[] arrives = new int[n+1];
+    for(int i=1;i< arrives.length;i++){
+      if(arrives[i]==1)continue;
+      int[] subArrives1 = new int[n+1];
+      int[] subArrives2 = new int[n+1];
+      Queue<Integer> queue = new LinkedList<>();
+      queue.add(i);
+      boolean start = true;
+      while (!queue.isEmpty()){
+        int parent = queue.poll();
+        List<Integer> nexts = route.getOrDefault(parent, new ArrayList<>());
+        for(int j=0;j<nexts.size();j++){
+          int v = nexts.get(j);
+          if(start && subArrives1[v]==1){
+            System.out.println("111---"+parent+"::"+ v);
+            return false;
+          }
+          else if(subArrives2[v]==1) return false;
+        }
+        for(int j=0;j<nexts.size();j++) {
+          int v = nexts.get(j);
+          arrives[v]=1;
+          if(start)subArrives1[v]=1;
+          else subArrives2[v]=1;
+          queue.add(v);
+        }
+        start =!start;
+      }
+    }
+    return true;
   }
 }
