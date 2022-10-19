@@ -292,4 +292,15 @@ public class LeetCode {
     }
     return true;
   }
+
+  public int atMostNGivenDigitSet(String[] digits, int n) {
+    String strN = String.valueOf(n);
+    int loop = strN.length() -1 ;
+    int ans = 0;
+    while (loop>0){
+     ans =  ans + (int)Math.pow(digits.length, loop);
+     loop--;
+    }
+    return ans;
+  }
 }
