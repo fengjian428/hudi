@@ -52,7 +52,7 @@ public class LeetCode {
         System.out.println(lastPrice + "-" + i + "-" + max);
         for (int j = i; j < prices.length; j++) {
           System.out.println(lastPrice + "-" + j + "-" + max + "-" + prices[j] + "--" + Math.max(max, fee));
-          if ((prices[j] - lastPrice) >  Math.max(max, fee)) {
+          if ((prices[j] - lastPrice) > Math.max(max, fee)) {
             max = prices[j] - lastPrice;
             System.out.println("111");
 
@@ -75,41 +75,46 @@ public class LeetCode {
         }
       }
     }
-    return profit + max -fee;
+    return profit + max - fee;
   }
 
   public boolean areAlmostEqual(String s1, String s2) {
     int first = -1;
     int second = -1;
-    for(int i=0;i<s1.length();i++){
-     if(s1.charAt(i)!=s2.charAt(i)){
-       if(first==-1){
-         first = i;
-       }
-       else if(second==-1){
-         second =i;
-       }
-       else {
-         return false;
-       }
-     }
+    for (int i = 0; i < s1.length(); i++) {
+      if (s1.charAt(i) != s2.charAt(i)) {
+        if (first == -1) {
+          first = i;
+        } else if (second == -1) {
+          second = i;
+        } else {
+          return false;
+        }
+      }
     }
-    if(first!=-1 && second!=-1){
-      return s1.charAt(first)==s2.charAt(second) && s1.charAt(second)==s2.charAt(first);
+    if (first != -1 && second != -1) {
+      return s1.charAt(first) == s2.charAt(second) && s1.charAt(second) == s2.charAt(first);
     }
     return false;
   }
+
   public class TreeNode {
-      int val;
-      TreeNode left;
-      TreeNode right;
-      TreeNode() {}
-      TreeNode(int val) { this.val = val; }
-      TreeNode(int val, TreeNode left, TreeNode right) {
-          this.val = val;
-          this.left = left;
-          this.right = right;
-      }
+    int val;
+    TreeNode left;
+    TreeNode right;
+
+    TreeNode() {
+    }
+
+    TreeNode(int val) {
+      this.val = val;
+    }
+
+    TreeNode(int val, TreeNode left, TreeNode right) {
+      this.val = val;
+      this.left = left;
+      this.right = right;
+    }
   }
 
   private List<Integer> ans = new ArrayList<>();
@@ -141,48 +146,58 @@ public class LeetCode {
   //R3G2B1
   public int countPoints(String rings) {
     int[] sticks = new int[10];
-    for(int i=0;i<rings.length();i++){
-      if(i%2==0){
-        int stick = Character.getNumericValue(rings.charAt(i+1));
-        if(rings.charAt(i)=='R') {
-          sticks[stick] = sticks[stick]|1;
-        }
-        else if(rings.charAt(i)=='G'){
-          sticks[stick] = sticks[stick]|2;
-        }
-        else {
-          sticks[stick] = sticks[stick]|4;
+    for (int i = 0; i < rings.length(); i++) {
+      if (i % 2 == 0) {
+        int stick = Character.getNumericValue(rings.charAt(i + 1));
+        if (rings.charAt(i) == 'R') {
+          sticks[stick] = sticks[stick] | 1;
+        } else if (rings.charAt(i) == 'G') {
+          sticks[stick] = sticks[stick] | 2;
+        } else {
+          sticks[stick] = sticks[stick] | 4;
         }
       }
     }
     int ans = 0;
-    for(int i=0;i< sticks.length;i++){
-     if(sticks[i]==7)ans++;
+    for (int i = 0; i < sticks.length; i++) {
+      if (sticks[i] == 7) {
+        ans++;
+      }
     }
     return ans;
   }
 
   public int lengthOfLIS(int[] nums) {
     int dp[] = new int[nums.length];
-    dp[0]=1;
-    for(int i=1;i<nums.length;i++){
+    dp[0] = 1;
+    for (int i = 1; i < nums.length; i++) {
       dp[i] = 1;
-      int j = i-1;
+      int j = i - 1;
       while (nums[j] >= nums[i] && j >= 0) {
         j--;
       }
-      if(nums[j]<nums[i]){
-        dp[i]=dp[i]+dp[j];
+      if (nums[j] < nums[i]) {
+        dp[i] = dp[i] + dp[j];
       }
     }
     return Arrays.stream(dp).max().orElse(0);
   }
+
   public class ListNode {
-      int val;
-      ListNode next;
-      ListNode() {}
-      ListNode(int val) { this.val = val; }
-      ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+    int val;
+    ListNode next;
+
+    ListNode() {
+    }
+
+    ListNode(int val) {
+      this.val = val;
+    }
+
+    ListNode(int val, ListNode next) {
+      this.val = val;
+      this.next = next;
+    }
   }
 
   public ListNode addTwoNumbers(ListNode l1, ListNode l2) {
@@ -248,46 +263,53 @@ public class LeetCode {
   public void testpossibleBipartition() throws IOException {
 //    System.out.println(res);
   }
+
   public boolean possibleBipartition(int n, int[][] dislikes) {
     Map<Integer, List<Integer>> route = new HashMap<>();
-    for(int i=0;i< dislikes.length;i++){
-      if(!route.containsKey(dislikes[i][0])){
+    for (int i = 0; i < dislikes.length; i++) {
+      if (!route.containsKey(dislikes[i][0])) {
         List<Integer> nexts = new ArrayList<>();
         route.put(dislikes[i][0], nexts);
       }
-     route.get(dislikes[i][0]).add(dislikes[i][1]);
+      route.get(dislikes[i][0]).add(dislikes[i][1]);
     }
-    route.forEach((key, list)->{
-     System.out.println(key+":"+ list.stream().map(String::valueOf)
-         .collect(Collectors.joining(",")));
+    route.forEach((key, list) -> {
+      System.out.println(key + ":" + list.stream().map(String::valueOf)
+          .collect(Collectors.joining(",")));
     });
-    int[] arrives = new int[n+1];
-    for(int i=1;i< arrives.length;i++){
-      if(arrives[i]==1)continue;
-      int[] subArrives1 = new int[n+1];
-      int[] subArrives2 = new int[n+1];
+    int[] arrives = new int[n + 1];
+    for (int i = 1; i < arrives.length; i++) {
+      if (arrives[i] == 1) {
+        continue;
+      }
+      int[] subArrives1 = new int[n + 1];
+      int[] subArrives2 = new int[n + 1];
       Queue<Integer> queue = new LinkedList<>();
       queue.add(i);
       boolean start = true;
-      while (!queue.isEmpty()){
+      while (!queue.isEmpty()) {
         int parent = queue.poll();
         List<Integer> nexts = route.getOrDefault(parent, new ArrayList<>());
-        for(int j=0;j<nexts.size();j++){
+        for (int j = 0; j < nexts.size(); j++) {
           int v = nexts.get(j);
-          if(start && subArrives1[v]==1){
-            System.out.println("111---"+parent+"::"+ v);
+          if (start && subArrives1[v] == 1) {
+            System.out.println("111---" + parent + "::" + v);
+            return false;
+          } else if (subArrives2[v] == 1) {
             return false;
           }
-          else if(subArrives2[v]==1) return false;
         }
-        for(int j=0;j<nexts.size();j++) {
+        for (int j = 0; j < nexts.size(); j++) {
           int v = nexts.get(j);
-          arrives[v]=1;
-          if(start)subArrives1[v]=1;
-          else subArrives2[v]=1;
+          arrives[v] = 1;
+          if (start) {
+            subArrives1[v] = 1;
+          } else {
+            subArrives2[v] = 1;
+          }
           queue.add(v);
         }
-        start =!start;
+        start = !start;
       }
     }
     return true;
@@ -295,12 +317,46 @@ public class LeetCode {
 
   public int atMostNGivenDigitSet(String[] digits, int n) {
     String strN = String.valueOf(n);
-    int loop = strN.length() -1 ;
+    int loop = strN.length() - 1;
     int ans = 0;
-    while (loop>0){
-     ans =  ans + (int)Math.pow(digits.length, loop);
-     loop--;
+    while (loop > 0) {
+      ans = ans + (int) Math.pow(digits.length, loop);
+      loop--;
     }
     return ans;
+  }
+
+  //  给定两个以字符串形式表示的非负整数num1和num2，返回num1和num2的乘积，它们的乘积也表示为字符串形式。
+//  示例
+//  输入: num1 = "123", num2 = "456"
+//  输出: "56088"
+//  说明：
+//  num1和num2的长度小于110。
+//  num1和num2只包含数字0-9。
+//  num1和num2均不以零开头，除非是数字 0 本身。
+//  不能使用任何标准库的大数类型（比如 BigInteger）或直接将输入转换为整数来处理。
+  public String multiNums(String num1, String num2) {
+    char[] ans = new char[num1.length() + num2.length()];
+    for (int i = num1.length() - 1; i >= 0; i--) {
+      for (int j = num2.length() - 1; j >= 0; j--) {
+        ans[i + j + 1] += (num1.charAt(i) - '0') * (num2.charAt(j) - '0');
+      }
+    }
+    int remind = 0;
+    for (int i = ans.length - 1; i >= 0; i--) {
+      ans[i] += remind;
+      remind = ans[i] / 10;
+      ans[i] %= 10;
+    }
+    return new String(ans);
+  }
+  @Test
+  public void testMultiNums(){
+   String num1 ="123";
+    String num2 ="456";
+    System.out.println(multiNums(num1, num2));
+  }
+  public static void main(String[] args){
+
   }
 }
