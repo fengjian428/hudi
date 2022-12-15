@@ -886,7 +886,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     }
     final Timer.Context timerContext = metrics.getCleanCtx();
     CleanerUtils.rollbackFailedWrites(config.getFailedWritesCleanPolicy(),
-        HoodieTimeline.CLEAN_ACTION, () -> rollbackFailedWrites(skipLocking));
+        HoodieTimeline.CLEAN_ACTION, () -> rollbackFailedWrites(cleanInstantTime, skipLocking));
 
     HoodieTable table = createTable(config, hadoopConf);
     if (config.allowMultipleCleans() || !table.getActiveTimeline().getCleanerTimeline().filterInflightsAndRequested().firstInstant().isPresent()) {
@@ -965,9 +965,9 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
    * Provides a new commit time for a write operation (insert/update/delete/insert_overwrite/insert_overwrite_table) with specified action.
    */
   public String startCommit(String actionType, HoodieTableMetaClient metaClient) {
-    CleanerUtils.rollbackFailedWrites(config.getFailedWritesCleanPolicy(),
-        HoodieTimeline.COMMIT_ACTION, () -> rollbackFailedWrites());
     String instantTime = HoodieActiveTimeline.createNewInstantTime();
+    CleanerUtils.rollbackFailedWrites(config.getFailedWritesCleanPolicy(),
+        HoodieTimeline.COMMIT_ACTION, () -> rollbackFailedWrites(instantTime));
     startCommit(instantTime, actionType, metaClient);
     return instantTime;
   }
@@ -994,7 +994,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
    */
   private void startCommitWithTime(String instantTime, String actionType, HoodieTableMetaClient metaClient) {
     CleanerUtils.rollbackFailedWrites(config.getFailedWritesCleanPolicy(),
-        HoodieTimeline.COMMIT_ACTION, () -> rollbackFailedWrites());
+        HoodieTimeline.COMMIT_ACTION, () -> rollbackFailedWrites(instantTime));
     startCommit(instantTime, actionType, metaClient);
   }
 
@@ -1239,33 +1239,34 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
   /**
    * Rollback all failed writes.
    */
-  protected Boolean rollbackFailedWrites() {
-    return rollbackFailedWrites(false);
+  protected Boolean rollbackFailedWrites(String instant) {
+    return rollbackFailedWrites(instant, false);
   }
 
   /**
    * Rollback all failed writes.
    * @param skipLocking if this is triggered by another parent transaction, locking can be skipped.
    */
-  protected Boolean rollbackFailedWrites(boolean skipLocking) {
+  protected Boolean rollbackFailedWrites(String instant, boolean skipLocking) {
+    HoodieInstant hoodieInstant = new HoodieInstant(true, HoodieTimeline.CLEAN_ACTION, instant);
     HoodieTable<T, I, K, O> table = createTable(config, hadoopConf);
     if (!skipLocking) {
-      this.txnManager.beginTransaction(Option.empty(), Option.empty());
+      this.txnManager.beginTransaction(Option.of(hoodieInstant), Option.empty(), true);
     }
     try {
       List<String> instantsToRollback = getInstantsToRollback(table.getMetaClient(), config.getFailedWritesCleanPolicy(), Option.empty());
       Map<String, Option<HoodiePendingRollbackInfo>> pendingRollbacks = getPendingRollbackInfos(table.getMetaClient());
       instantsToRollback.forEach(entry -> pendingRollbacks.putIfAbsent(entry, Option.empty()));
-      rollbackFailedWrites(pendingRollbacks, skipLocking);
+      rollbackFailedWrites(instant, pendingRollbacks, skipLocking);
     } finally {
       if (!skipLocking) {
-        this.txnManager.endTransaction(Option.empty());
+        this.txnManager.endTransaction(Option.of(hoodieInstant));
       }
     }
     return true;
   }
 
-  protected void rollbackFailedWrites(Map<String, Option<HoodiePendingRollbackInfo>> instantsToRollback, boolean skipLocking) {
+  protected void rollbackFailedWrites(String commitInstant, Map<String, Option<HoodiePendingRollbackInfo>> instantsToRollback, boolean skipLocking) {
     // sort in reverse order of commit times
     LinkedHashMap<String, Option<HoodiePendingRollbackInfo>> reverseSortedRollbackInstants = instantsToRollback.entrySet()
         .stream().sorted((i1, i2) -> i2.getKey().compareTo(i1.getKey()))
@@ -1671,7 +1672,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
         Map<String, Option<HoodiePendingRollbackInfo>> pendingRollbacks = getPendingRollbackInfos(metaClient);
         instantsToRollback.forEach(entry -> pendingRollbacks.putIfAbsent(entry, Option.empty()));
 
-        rollbackFailedWrites(pendingRollbacks, true);
+        rollbackFailedWrites(instantTime.get(), pendingRollbacks, true);
       }
 
       new UpgradeDowngrade(metaClient, config, context, upgradeDowngradeHelper)

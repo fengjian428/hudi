@@ -47,14 +47,32 @@ public class TransactionManager implements Serializable {
 
   public void beginTransaction(Option<HoodieInstant> newTxnOwnerInstant,
                                Option<HoodieInstant> lastCompletedTxnOwnerInstant) {
+   beginTransaction(newTxnOwnerInstant, lastCompletedTxnOwnerInstant, false);
+  }
+
+  public void beginTransaction(Option<HoodieInstant> newTxnOwnerInstant,
+                               Option<HoodieInstant> lastCompletedTxnOwnerInstant,
+                               boolean reentrant) {
     if (isOptimisticConcurrencyControlEnabled) {
       LOG.info("Transaction starting for " + newTxnOwnerInstant
           + " with latest completed transaction instant " + lastCompletedTxnOwnerInstant);
+      if (reentrant && alreadyOwnBy(newTxnOwnerInstant)) {
+        LOG.info("Transaction already own by " + newTxnOwnerInstant
+            + " with latest completed transaction instant " + lastCompletedTxnOwnerInstant + ", and reentrant is true");
+        return;
+      }
       lockManager.lock();
       reset(currentTxnOwnerInstant, newTxnOwnerInstant, lastCompletedTxnOwnerInstant);
       LOG.info("Transaction started for " + newTxnOwnerInstant
           + " with latest completed transaction instant " + lastCompletedTxnOwnerInstant);
     }
+  }
+
+  private boolean alreadyOwnBy(Option<HoodieInstant> newTxnOwnerInstant) {
+    if (newTxnOwnerInstant.isPresent() && newTxnOwnerInstant.get().equals(currentTxnOwnerInstant.get())) {
+      return true;
+    }
+    return false;
   }
 
   public void endTransaction(Option<HoodieInstant> currentTxnOwnerInstant) {
