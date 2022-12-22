@@ -26,9 +26,12 @@ import org.apache.hudi.common.model.HoodieConsistentHashingMetadata;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.util.DefaultSizeEstimator;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.SizeEstimator;
 import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.index.SparkHoodieIndexFactory;
 import org.apache.hudi.index.bucket.ConsistentBucketIdentifier;
 import org.apache.hudi.index.bucket.HoodieSparkConsistentBucketIndex;
 import org.apache.hudi.io.AppendHandleFactory;
@@ -42,6 +45,7 @@ import org.apache.log4j.Logger;
 import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.JavaRDD;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,6 +59,7 @@ import java.util.stream.Collectors;
 import scala.Tuple2;
 
 import static org.apache.hudi.config.HoodieClusteringConfig.PLAN_STRATEGY_SORT_COLUMNS;
+import static org.apache.hudi.config.HoodieIndexConfig.BUCKET_INDEX_MAX_NUM_BUCKETS;
 
 /**
  * A partitioner for (consistent hashing) bucket index used in bulk_insert
@@ -65,6 +70,7 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
 
   private final HoodieTable table;
   private final List<String> indexKeyFields;
+  private HoodieWriteConfig config;
   private final Map<String, List<ConsistentHashingNode>> hashingChildrenNodes;
   private final String[] sortColumnNames;
   private final boolean preserveHoodieMetadata;
@@ -73,11 +79,13 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
   private List<Boolean> doAppend;
   private List<String> fileIdPfxList;
 
-  public RDDConsistentBucketPartitioner(HoodieTable table, Map<String, String> strategyParams, boolean preserveHoodieMetadata) {
+  public RDDConsistentBucketPartitioner(HoodieTable table, Map<String, String> strategyParams, boolean preserveHoodieMetadata, HoodieWriteConfig config) {
+    LOG.info("create RDDConsistentBucketPartitioner ..");
     this.table = table;
-    this.indexKeyFields = Arrays.asList(table.getConfig().getBucketIndexHashField().split(","));
+    this.indexKeyFields = Arrays.asList(config.getBucketIndexHashField().split(","));
+    this.config = config;
     this.hashingChildrenNodes = new HashMap<>();
-    this.consistentLogicalTimestampEnabled = table.getConfig().isConsistentLogicalTimestampEnabled();
+    this.consistentLogicalTimestampEnabled = config.isConsistentLogicalTimestampEnabled();
     this.preserveHoodieMetadata = preserveHoodieMetadata;
 
     if (strategyParams.containsKey(PLAN_STRATEGY_SORT_COLUMNS.key())) {
@@ -87,12 +95,20 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
     }
   }
 
-  public RDDConsistentBucketPartitioner(HoodieTable table) {
-    this(table, Collections.emptyMap(), false);
-    ValidationUtils.checkArgument(table.getIndex() instanceof HoodieSparkConsistentBucketIndex,
+  public RDDConsistentBucketPartitioner(HoodieWriteConfig config) {
+    this(null, Collections.emptyMap(), false, config);
+    ValidationUtils.checkArgument(SparkHoodieIndexFactory.createIndex(config) instanceof HoodieSparkConsistentBucketIndex,
         "RDDConsistentBucketPartitioner can only be used together with consistent hashing bucket index");
-    ValidationUtils.checkArgument(table.getMetaClient().getTableType().equals(HoodieTableType.MERGE_ON_READ),
-        "CoW table with bucket index doesn't support bulk_insert");
+    //ValidationUtils.checkArgument(table.getMetaClient().getTableType().equals(HoodieTableType.MERGE_ON_READ),
+    //"CoW table with bucket index doesn't support bulk_insert");
+  }
+
+  public RDDConsistentBucketPartitioner(HoodieTable table, HoodieWriteConfig config) {
+    this(table, Collections.emptyMap(), false, config);
+    ValidationUtils.checkArgument(SparkHoodieIndexFactory.createIndex(config) instanceof HoodieSparkConsistentBucketIndex,
+        "RDDConsistentBucketPartitioner can only be used together with consistent hashing bucket index");
+    //ValidationUtils.checkArgument(table.getMetaClient().getTableType().equals(HoodieTableType.MERGE_ON_READ),
+    //"CoW table with bucket index doesn't support bulk_insert");
   }
 
   /**
@@ -127,7 +143,7 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
   @Override
   public boolean arePartitionRecordsSorted() {
     return (sortColumnNames != null && sortColumnNames.length > 0)
-        || table.requireSortedRecords() || table.getConfig().getBulkInsertSortMode() != BulkInsertSortMode.NONE;
+        || table.requireSortedRecords() || config.getBulkInsertSortMode() != BulkInsertSortMode.NONE;
   }
 
   @Override
@@ -146,12 +162,20 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
     hashingChildrenNodes.put(partition, nodes);
   }
 
-  /**
-   * Get (construct) the bucket identifier of the given partition
-   */
-  private ConsistentBucketIdentifier getBucketIdentifier(String partition) {
+  private ConsistentBucketIdentifier getBucketIdentifier(String partition, long totalRecordsSize) {
     HoodieSparkConsistentBucketIndex index = (HoodieSparkConsistentBucketIndex) table.getIndex();
-    HoodieConsistentHashingMetadata metadata = index.loadOrCreateMetadata(this.table, partition);
+    int estimateBucketNum = (int) (totalRecordsSize / (120 * 1024 * 1024));
+    if (estimateBucketNum > config.getInt(BUCKET_INDEX_MAX_NUM_BUCKETS)) {
+      estimateBucketNum = config.getInt(BUCKET_INDEX_MAX_NUM_BUCKETS);
+    }
+    int numBucket = estimateBucketNum == 0 ? 1 : estimateBucketNum;
+
+    HoodieConsistentHashingMetadata metadata = index.loadOrCreateMetadata(this.table, partition, numBucket);
+    try {
+      LOG.info("metadata: " + metadata.toJsonString());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     if (hashingChildrenNodes.containsKey(partition)) {
       metadata.setChildrenNodes(hashingChildrenNodes.get(partition));
     }
@@ -163,8 +187,10 @@ public class RDDConsistentBucketPartitioner<T extends HoodieRecordPayload> exten
    * the mapping from partition to its bucket identifier is constructed.
    */
   private Map<String, ConsistentBucketIdentifier> initializeBucketIdentifier(JavaRDD<HoodieRecord<T>> records) {
-    return records.map(HoodieRecord::getPartitionPath).distinct().collect().stream()
-        .collect(Collectors.toMap(p -> p, p -> getBucketIdentifier(p)));
+    SizeEstimator sizeEstimator = new DefaultSizeEstimator<>();
+    long averageRecordSize = sizeEstimator.sizeEstimate(records.first());
+    Map<String, Long> partitionRecordsCount = records.mapToPair(record -> new Tuple2<>(record.getPartitionPath(), 1)).countByKey();
+    return partitionRecordsCount.keySet().stream().collect(Collectors.toMap(p -> p, p -> getBucketIdentifier(p, averageRecordSize * partitionRecordsCount.get(p))));
   }
 
   /**

@@ -19,7 +19,9 @@
 package org.apache.hudi.execution.bulkinsert;
 
 import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.BulkInsertPartitioner;
+import org.apache.hudi.table.HoodieTable;
 
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -32,7 +34,21 @@ public abstract class BulkInsertInternalPartitionerWithRowsFactory {
 
   public static BulkInsertPartitioner<Dataset<Row>> get(HoodieWriteConfig config,
                                                         boolean isTablePartitioned) {
+    if (config.getIndexType().equals(HoodieIndex.IndexType.BUCKET)
+        && config.getBucketIndexEngineType().equals(HoodieIndex.BucketIndexEngineType.CONSISTENT_HASHING)) {
+      return new RDDConsistentBucketPartitioner(null, config);
+    }
     return get(config, isTablePartitioned, false);
+  }
+
+  public static BulkInsertPartitioner<Dataset<Row>> get(HoodieTable table,
+                                          HoodieWriteConfig config,
+                                          boolean enforceNumOutputPartitions) {
+    if (config.getIndexType().equals(HoodieIndex.IndexType.BUCKET)
+        && config.getBucketIndexEngineType().equals(HoodieIndex.BucketIndexEngineType.CONSISTENT_HASHING)) {
+      return new RDDConsistentBucketPartitioner(table, config);
+    }
+    return get(config, table.isPartitioned(), enforceNumOutputPartitions);
   }
 
   public static BulkInsertPartitioner<Dataset<Row>> get(HoodieWriteConfig config,

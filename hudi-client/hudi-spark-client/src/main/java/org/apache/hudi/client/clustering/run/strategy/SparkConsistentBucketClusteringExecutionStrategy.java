@@ -78,7 +78,7 @@ public class SparkConsistentBucketClusteringExecutionStrategy<T extends HoodieRe
     props.put(HoodieWriteConfig.AUTO_COMMIT_ENABLE.key(), Boolean.FALSE.toString());
     HoodieWriteConfig newConfig = HoodieWriteConfig.newBuilder().withProps(props).build();
 
-    RDDConsistentBucketPartitioner<T> partitioner = new RDDConsistentBucketPartitioner<>(getHoodieTable(), strategyParams, preserveHoodieMetadata);
+    RDDConsistentBucketPartitioner<T> partitioner = new RDDConsistentBucketPartitioner<>(getHoodieTable(), strategyParams, preserveHoodieMetadata, getWriteConfig());
     try {
       List<ConsistentHashingNode> nodes = ConsistentHashingNode.fromJsonString(extraMetadata.get(SparkConsistentBucketClusteringPlanStrategy.METADATA_CHILD_NODE_KEY));
       partitioner.addHashingChildrenNodes(extraMetadata.get(SparkConsistentBucketClusteringPlanStrategy.METADATA_PARTITION_KEY), nodes);

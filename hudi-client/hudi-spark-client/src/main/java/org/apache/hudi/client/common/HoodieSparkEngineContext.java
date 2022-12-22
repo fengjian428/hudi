@@ -38,6 +38,7 @@ import org.apache.hudi.exception.HoodieException;
 
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.sql.SQLContext;
@@ -63,6 +64,12 @@ public class HoodieSparkEngineContext extends HoodieEngineContext {
     super(new SerializableConfiguration(jsc.hadoopConfiguration()), new SparkTaskContextSupplier());
     this.javaSparkContext = jsc;
     this.sqlContext = SQLContext.getOrCreate(jsc.sc());
+  }
+
+  public HoodieSparkEngineContext(SparkContext sc) {
+    super(new SerializableConfiguration(sc.hadoopConfiguration()), new SparkTaskContextSupplier());
+    javaSparkContext = JavaSparkContext.fromSparkContext(sc);
+    this.sqlContext = SQLContext.getOrCreate(sc);
   }
 
   public void setSqlContext(SQLContext sqlContext) {

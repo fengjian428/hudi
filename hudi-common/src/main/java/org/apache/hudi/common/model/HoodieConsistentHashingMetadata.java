@@ -144,7 +144,7 @@ public class HoodieConsistentHashingMetadata implements Serializable {
     }
   }
 
-  private String toJsonString() throws IOException {
+  public String toJsonString() throws IOException {
     return JsonUtils.getObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(this);
   }
 

@@ -50,7 +50,7 @@ import org.apache.hudi.keygen.{TimestampBasedAvroKeyGenerator, TimestampBasedKey
 import org.apache.hudi.metrics.Metrics
 import org.apache.hudi.sync.common.HoodieSyncConfig
 import org.apache.hudi.sync.common.util.SyncUtilHelpers
-import org.apache.hudi.table.BulkInsertPartitioner
+import org.apache.hudi.table.{BulkInsertPartitioner, HoodieSparkTable}
 import org.apache.hudi.util.SparkKeyGenUtils
 import org.apache.log4j.LogManager
 import org.apache.spark.api.java.JavaSparkContext
@@ -73,6 +73,7 @@ object HoodieSparkSqlWriter {
   private var tableExists: Boolean = false
   private var asyncCompactionTriggerFnDefined: Boolean = false
   private var asyncClusteringTriggerFnDefined: Boolean = false
+  private var hsc:HoodieSparkEngineContext = null
 
   def write(sqlContext: SQLContext,
             mode: SaveMode,
@@ -89,6 +90,7 @@ object HoodieSparkSqlWriter {
     val path = optParams("path")
     val basePath = new Path(path)
 
+    hsc = new HoodieSparkEngineContext(sqlContext.sparkContext)
     val spark = sqlContext.sparkSession
     val sparkContext = sqlContext.sparkContext
 
@@ -735,7 +737,8 @@ object HoodieSparkSqlWriter {
       if (userDefinedBulkInsertPartitionerOpt.isPresent) {
         userDefinedBulkInsertPartitionerOpt.get
       } else {
-        BulkInsertInternalPartitionerWithRowsFactory.get(writeConfig, isTablePartitioned)
+        val table = HoodieSparkTable.create(writeConfig, hsc)
+        BulkInsertInternalPartitionerWithRowsFactory.get(table, writeConfig, isTablePartitioned)
       }
     } else {
       // Sort modes are not yet supported when meta fields are disabled

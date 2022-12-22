@@ -29,6 +29,7 @@ import org.apache.hudi.exception.HoodieClusteringException;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -92,8 +93,16 @@ public class ConsistentBucketIdentifier extends BucketIdentifier {
   }
 
   protected ConsistentHashingNode getBucket(int hashValue) {
-    SortedMap<Integer, ConsistentHashingNode> tailMap = ring.tailMap(hashValue);
-    return tailMap.isEmpty() ? ring.firstEntry().getValue() : tailMap.get(tailMap.firstKey());
+    try {
+      SortedMap<Integer, ConsistentHashingNode> tailMap = ring.tailMap(hashValue);
+      return tailMap.isEmpty() ? ring.firstEntry().getValue() : tailMap.get(tailMap.firstKey());
+    } catch (Exception ex) {
+      try {
+        throw new RuntimeException("Exception: " + hashValue + " ring size " + (ring == null ? 0 : ring.size()) + " metadata:" + metadata.toJsonString());
+      } catch (IOException e) {
+        throw new RuntimeException("Exception: " + hashValue + " ring size " + (ring == null ? 0 : ring.size()));
+      }
+    }
   }
 
   /**

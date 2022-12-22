@@ -40,7 +40,7 @@ public abstract class BulkInsertInternalPartitionerFactory {
                                           boolean enforceNumOutputPartitions) {
     if (config.getIndexType().equals(HoodieIndex.IndexType.BUCKET)
         && config.getBucketIndexEngineType().equals(HoodieIndex.BucketIndexEngineType.CONSISTENT_HASHING)) {
-      return new RDDConsistentBucketPartitioner(table);
+      return new RDDConsistentBucketPartitioner(table, config);
     }
     return get(config, table.isPartitioned(), enforceNumOutputPartitions);
   }

@@ -418,17 +418,6 @@ public class HoodieTableMetaClient implements Serializable {
         throw new HoodieException("Only simple, non-partitioned or complex key generator are supported when meta-fields are disabled. Used: " + keyGenClass);
       }
     }
-
-    //Check to make sure it's not a COW table with consistent hashing bucket index
-    if (tableType == HoodieTableType.COPY_ON_WRITE) {
-      String indexType = properties.getProperty("hoodie.index.type");
-      if (indexType != null && indexType.equals("BUCKET")) {
-        String bucketEngine = properties.getProperty("hoodie.index.bucket.engine");
-        if (bucketEngine != null && bucketEngine.equals("CONSISTENT_HASHING")) {
-          throw new HoodieException("Consistent hashing bucket index does not work with COW table. Use simple bucket index or an MOR table.");
-        }
-      }
-    }
   }
 
   /**

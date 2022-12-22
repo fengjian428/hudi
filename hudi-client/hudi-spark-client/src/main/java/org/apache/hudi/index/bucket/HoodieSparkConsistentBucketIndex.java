@@ -161,14 +161,14 @@ public class HoodieSparkConsistentBucketIndex extends HoodieBucketIndex {
    * @param partition table partition
    * @return Consistent hashing metadata
    */
-  public HoodieConsistentHashingMetadata loadOrCreateMetadata(HoodieTable table, String partition) {
+  public HoodieConsistentHashingMetadata loadOrCreateMetadata(HoodieTable table, String partition, int bucketNum) {
     Option<HoodieConsistentHashingMetadata> metadataOption = loadMetadata(table, partition);
     if (metadataOption.isPresent()) {
       return metadataOption.get();
     }
 
     // There is no metadata, so try to create a new one and save it.
-    HoodieConsistentHashingMetadata metadata = new HoodieConsistentHashingMetadata(partition, numBuckets);
+    HoodieConsistentHashingMetadata metadata = new HoodieConsistentHashingMetadata(partition, bucketNum);
     if (saveMetadata(table, metadata, false)) {
       return metadata;
     }
@@ -253,7 +253,7 @@ public class HoodieSparkConsistentBucketIndex extends HoodieBucketIndex {
     public ConsistentBucketIndexLocationMapper(HoodieTable table, List<String> partitions) {
       // TODO maybe parallel
       partitionToIdentifier = partitions.stream().collect(Collectors.toMap(p -> p, p -> {
-        HoodieConsistentHashingMetadata metadata = loadOrCreateMetadata(table, p);
+        HoodieConsistentHashingMetadata metadata = loadOrCreateMetadata(table, p, numBuckets);
         return new ConsistentBucketIdentifier(metadata);
       }));
     }
